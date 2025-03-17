@@ -21,4 +21,39 @@ editor_options:
   chunk_output_type: console
 ---
 
+<!-- Good to have at hand as comment 
+
+- NVI Rstudio doc : <https://github.com/NorwegianVeterinaryInstitute/posit-team/wiki/Documentation>
+- using Renv (allows to work on same versions) <https://rstudio.github.io/renv/articles/renv.html>
+- Github repo : <https://github.com/NorwegianVeterinaryInstitute/2025_PAWH_APEC1>
+
+
+TODO : 
+1. setup ssh and github
+2. clone the repo 
+3. start collaborative work (code and learn how to push pull from github)
+
+renv::install() 
+renv::snapshot()
+--> 
+
+
+```{r setup}
+library(here)
+library(tidyverse)
+
+```
+
+
+```{r source reused functions}
+fun_files_path <- 
+  list.files(
+  here::here(params$source_code),
+  pattern = "*.R",
+  full.names = T)
+# sourcing all the functions 
+sapply(fun_files_path,source,.GlobalEnv)
+```
+
+
 
