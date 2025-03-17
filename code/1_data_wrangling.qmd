@@ -1,0 +1,24 @@
+---
+title: "1. Data Wrangling"
+author: "Solveig Sølverød Mo and Eve Zeyl Fiskebeck"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+params:
+    pjs_df: "data/path.xlsx"
+    pjs_sheet: "Cleaned_data" 
+    vigas_df: "data/path.xlsx"
+    source_code: 'code/R'
+execute: 
+  echo: false
+  cache: false
+format: html
+knitr:
+  opts_chunk: 
+    collapse: true
+    comment: "#>" 
+    R.options:
+      knitr.graphics.auto_pdf: true
+editor_options: 
+  chunk_output_type: console
+---
+
+
