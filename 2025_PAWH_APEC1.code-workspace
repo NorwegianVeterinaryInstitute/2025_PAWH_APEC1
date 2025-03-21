@@ -1,0 +1,11 @@
+{
+	"folders": [
+		{
+			"path": "."
+		}
+	],
+	"settings": {
+		"r.alwaysUseActiveTerminal": true,
+		"r.rterm.linux": ""
+	}
+}

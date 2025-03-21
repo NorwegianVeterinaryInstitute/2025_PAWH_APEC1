@@ -41,19 +41,30 @@ renv::snapshot()
 ```{r setup}
 library(here)
 library(tidyverse)
+library("RColorBrewer")
+```
 
+
+<!-- comment this if using Rstudio --> 
+```{r params for vscode}
+params <- list()
+params$pjs_df <- "data/path.xlsx"
+params$pjs_sheet <- "Cleaned_data" 
+params$vigas_df <- "data/path.xlsx"
+params$source_code <- 'code/R'
+
+params$source_code
+here::here(params$source_code)
 ```
 
 
 ```{r source reused functions}
-fun_files_path <- 
-  list.files(
-  here::here(params$source_code),
-  pattern = "*.R",
-  full.names = T)
+fun_files_path <- list.files(
+  here::here(params$source_code), 
+  pattern = "*.R", 
+  full.names = TRUE
+  )
 # sourcing all the functions 
 sapply(fun_files_path,source,.GlobalEnv)
 ```
-
-
 
