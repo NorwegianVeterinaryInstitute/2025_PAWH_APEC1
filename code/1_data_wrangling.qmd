@@ -20,49 +20,25 @@ knitr:
 editor_options: 
   chunk_output_type: console
 ---
-
 <!-- Good to have at hand as comment 
-
 - NVI Rstudio doc : <https://github.com/NorwegianVeterinaryInstitute/posit-team/wiki/Documentation>
 - using Renv (allows to work on same versions) <https://rstudio.github.io/renv/articles/renv.html>
 - Github repo : <https://github.com/NorwegianVeterinaryInstitute/2025_PAWH_APEC1>
-
-
-TODO : 
-1. setup ssh and github
-2. clone the repo 
-3. start collaborative work (code and learn how to push pull from github)
 
 renv::install() 
 renv::snapshot()
 --> 
 
-
 ```{r setup}
-# install.packages("renv")
 # renv::restore() # run first 
-
 library(here)
 library(tidyverse)
 library("RColorBrewer")
 ```
 
-```{r setup vscode}
-#renv::install("languageserver")
-#renv::install("rmarkdown")
-#renv::install("httpgd")
-#renv::install("ManuelHentschel/vscDebugger")
-#install.packages("installr")
-#options(browser = "chrome")
-#options(browser = "firefox")
-#options(browser = "edge")
-# library(languageserver)
-# library(rmarkdown)
-
-
-```
-<!-- comment this if using Rstudio --> 
+<!-- comment this if using Rstudio -->
 ```{r params for vscode}
+# Only when using VScode (explain)
 params <- list()
 params$pjs_df <- "data/path.xlsx"
 params$pjs_sheet <- "Cleaned_data" 
