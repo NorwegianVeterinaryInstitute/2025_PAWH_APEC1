@@ -39,12 +39,28 @@ renv::snapshot()
 
 
 ```{r setup}
+# install.packages("renv")
+# renv::restore() # run first 
+
 library(here)
 library(tidyverse)
 library("RColorBrewer")
 ```
 
+```{r setup vscode}
+#renv::install("languageserver")
+#renv::install("rmarkdown")
+#renv::install("httpgd")
+#renv::install("ManuelHentschel/vscDebugger")
+#install.packages("installr")
+#options(browser = "chrome")
+#options(browser = "firefox")
+#options(browser = "edge")
+# library(languageserver)
+# library(rmarkdown)
 
+
+```
 <!-- comment this if using Rstudio --> 
 ```{r params for vscode}
 params <- list()
