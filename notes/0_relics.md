@@ -9,7 +9,10 @@
 #options(browser = "edge")
 # library(languageserver)
 # library(rmarkdown)
+https://stackoverflow.com/questions/33798115/command-to-see-r-path-that-rstudio-is-using
+.libPaths() <- c("C:/Users/VI2067/AppData/Local/Programs/R/R-4.4.3/library", .libPaths())
 
+options("langserver_rpath" = "C:/GITS/2025_PAWH_APEC1/renv/library/windows/R-4.4/x86_64-w64-mingw32")
 
 
 #renv::install("rmarkdown")

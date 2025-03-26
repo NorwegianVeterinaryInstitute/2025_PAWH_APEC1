@@ -30,10 +30,14 @@ renv::snapshot()
 --> 
 
 ```{r setup}
+renv::load()
 # renv::restore() # run first 
 library(here)
 library(tidyverse)
 library("RColorBrewer")
+#list.files("C:/GITS/2025_PAWH_APEC1/renv/library/windows/R-4.4/x86_64-w64-mingw32")
+#options("langserver_rpath" = "C:/GITS/2025_PAWH_APEC1/renv/library/windows/R-4.4/x86_64-w64-mingw32")
+
 ```
 
 <!-- comment this if using Rstudio -->
