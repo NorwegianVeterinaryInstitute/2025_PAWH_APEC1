@@ -1,7 +1,9 @@
 data/
 2025_PAWH_APEC1.Rproj
-2025_PAWH_APEC1.code-workspace
 renv 
+
+# 2025_PAWH_APEC1.code-workspace # this is the workspace of Solveig now
+# 2025_PAWH_APEC1_EveFix.code-workspace # this is the fix nvi workspace
 
 
 ##############

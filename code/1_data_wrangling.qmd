@@ -25,19 +25,33 @@ editor_options:
 - using Renv (allows to work on same versions) <https://rstudio.github.io/renv/articles/renv.html>
 - Github repo : <https://github.com/NorwegianVeterinaryInstitute/2025_PAWH_APEC1>
 
-renv::install() 
-renv::snapshot()
+
+renv::snapshot() # to run when new package installed
+renv::restore() # to install new packages (when the other partner has updated in github
 --> 
 
+
+
+
 ```{r setup}
-renv::load()
-# renv::restore() # run first 
 library(here)
 library(tidyverse)
-library("RColorBrewer")
-#list.files("C:/GITS/2025_PAWH_APEC1/renv/library/windows/R-4.4/x86_64-w64-mingw32")
-#options("langserver_rpath" = "C:/GITS/2025_PAWH_APEC1/renv/library/windows/R-4.4/x86_64-w64-mingw32")
+library(tidyverse)
 
+```
+
+
+
+```{r dummu setup , include=FALSE}
+# just to make sure the language server is not removed from renv::lock
+# because want to use this env in vscode to run the languageserver
+#library(R.utils)
+#R.utils::getHostname.System()
+#library(languageserver)
+#run()
+#library(vscDebugger)
+#.vsc.getSession()[1]
+#rmarkdown::metadata
 ```
 
 <!-- comment this if using Rstudio -->

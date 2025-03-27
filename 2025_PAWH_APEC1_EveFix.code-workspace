@@ -1,0 +1,15 @@
+{
+	"folders": [
+		{
+			"path": "."
+		}
+	],
+	"settings": {
+		"r.alwaysUseActiveTerminal": true,
+		"r.rterm.linux": "",
+		"r.lsp.debug": true,
+		"r.lsp.promptToInstall": false,
+		"r.plot.useHttpgd": true,
+		"r.removeLeadingComments": true
+	}
+}
