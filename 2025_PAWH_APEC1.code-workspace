@@ -29,7 +29,8 @@
 			"ms-vscode.live-server",
 			"ms-vsliveshare.vsliveshare",
 			"reditorsupport.r",
-			"google.geminicodeassist"
+			"google.geminicodeassist",
+			"rdebugger.r-debugger"
 		]
 	}
 }
