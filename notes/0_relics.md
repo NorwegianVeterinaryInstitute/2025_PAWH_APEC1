@@ -1,3 +1,44 @@
+C:/Program Files/R/R-4.4.3/bin/R.exe
+C:/Program Files/R/R-4.4.3/bin/R.exe
+
+https://stackoverflow.com/questions/35768916/how-to-show-the-extensions-installed-in-visual-studio-code
+code --list-extensions --show-versions
+- click each app - settings -> add recommendation to workspace
+https://rstudio.github.io/renv/articles/faq.html#:~:text=So%20if%20you%20find%20a,be%20used%20in%20a%20project.
+
+renv::settings$snapshot.type("all")
+
+find.package("httpgd")
+
+renv::install()
+renv::install("ManuelHentschel/vscDebugger")
+
+
+
+```{r dummu setup , include=FALSE}
+renv::install("httpgd")
+renv::install("ManuelHentschel/vscDebugger")
+renv::install("rmarkdown")
+
+# just to make sure the language server is not removed from renv::lock
+# because want to use this env in vscode to run the languageserver
+#library(R.utils)
+#R.utils::getHostname.System()
+#library(languageserver)
+#run()
+# library(vscDebugger)
+# .vsc.getSession()[1]
+#rmarkdown::metadata
+# library(httpuv)
+# httpuv::getRNGState()
+
+```
+
+
+  "r.terminalPath": "C:\\Program Files\\R\\R-4.3.2\\bin\\x64\\Rterm.exe",
+  "r.interpreterPath": "C:\\Program Files\\R\\R-4.3.2\\bin\\x64\\R.exe",
+
+  
 install.packages("renv")
 renv::install("languageserver")
 renv::install("httpgd")
@@ -95,3 +136,7 @@ print(desc_hash_value)
 #     "C:/Users/VI2067/AppData/Local/R/cache/R/renv/sandbox/windows/R-4.4/x86_64-w64-mingw32/a87bc7b1"
 #     )
 # } 
+
+
+
+

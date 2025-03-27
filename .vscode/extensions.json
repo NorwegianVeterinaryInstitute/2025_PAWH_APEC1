@@ -1,0 +1,11 @@
+{
+    "recommendations": [
+        "quarto.quarto",
+        "github.copilot",
+        "github.copilot-chat",
+        "ms-vscode.live-server",
+        "ms-vsliveshare.vsliveshare",
+        "reditorsupport.r",
+        "google.geminicodeassist"
+    ]
+}

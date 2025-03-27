@@ -27,34 +27,22 @@ editor_options:
 
 
 renv::snapshot() # to run when new package installed
-renv::restore() # to install new packages (when the other partner has updated in github
+renv::load() # is the command to run when the other has updated the script and new packages are installed. 
+This is now integrated in the .Rprofile
+renv::restore() # to reinstall everything - only if problems
 --> 
-
-
 
 
 ```{r setup}
 library(here)
 library(tidyverse)
-library(tidyverse)
-
 ```
 
 
 
-```{r dummu setup , include=FALSE}
-# just to make sure the language server is not removed from renv::lock
-# because want to use this env in vscode to run the languageserver
-#library(R.utils)
-#R.utils::getHostname.System()
-#library(languageserver)
-#run()
-#library(vscDebugger)
-#.vsc.getSession()[1]
-#rmarkdown::metadata
-```
 
-<!-- comment this if using Rstudio -->
+
+<!-- comment or do not run this if using Rstudio (ask Eve for explanation) -->
 ```{r params for vscode}
 # Only when using VScode (explain)
 params <- list()
