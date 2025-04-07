@@ -66,3 +66,17 @@ fun_files_path <- list.files(
 sapply(fun_files_path,source,.GlobalEnv)
 ```
 
+#Solveig trying to merge files from VIGAS and metadata from PJS:
+library(readxl)
+library(dplyr)
+VIGAS_data <- read_xlsx("data/2025-3-27-APEC_all-All_Fields.xlsx")%>%
+  mutate(Year = substr(Sample,1,4))%>%
+  filter(Year !="2015")%>%
+  filter(Year !="2025")
+#removed samples from 2015 and 2025, which should not be included in this study.
+PJS_data <- read_xlsx("data/Uttrekk_PJS_280325_SSM.xlsx") 
+#797 samples to be included in this APEC study. Merge file from VIGAS with file from PJS:
+APEC_all_merged <- VIGAS_data %>%
+  dplyr::left_join(PJS_data, by = c("Sample"="ID"))
+
+#APEC_all_merged includes data for the 797 included samples.
