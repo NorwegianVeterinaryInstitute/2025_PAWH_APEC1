@@ -83,4 +83,25 @@ APEC_all_merged <- VIGAS_data %>%
 #APEC_all_merged includes data for the 797 included samples.
 ```
 
+```{r}
+#Solveig trying to summarize MLST and serotype results:
+MLST_count <-APEC_all_merged %>%
+  select(`mlst/sequence_type`)%>%
+  group_by(`mlst/sequence_type`)%>%
+  summarise(antall=n())%>%
+  arrange(desc(antall))
+
+serotype_count <- APEC_all_merged %>%
+  select(`SeroTypeFinder/SeroType`)%>%
+  group_by(`SeroTypeFinder/SeroType`)%>%
+  summarise(antall=n())%>%
+  arrange(desc(antall))
+
+mlst_and_serotype_count <- APEC_all_merged %>%
+  select(`mlst/sequence_type`, `SeroTypeFinder/SeroType`)%>%
+  group_by(`SeroTypeFinder/SeroType`, `mlst/sequence_type`)%>%
+  summarise(antall=n(), .groups = "drop") %>%
+  arrange(desc(antall))
+```
+
 
