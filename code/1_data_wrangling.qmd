@@ -84,12 +84,36 @@ APEC_all_merged <- VIGAS_data %>%
 ```
 
 ```{r}
+#Solveig trying to see how many isolates are missing data from PJS:
+missing_PJS_data_artnavn <- APEC_all_merged %>%
+  select(`artnavn`) %>%
+  group_by(`artnavn`) %>%
+  summarise(antall=n())%>%
+  arrange(desc(antall))
+
+#16 missing information regarding artnavn.
+
+#check if any are missing hensikt, indicate that data have not been extracted from PJS:
+missing_PJS_hensikt <- APEC_all_merged %>%
+  select(`hensiktkode`) %>%
+  group_by(`hensiktkode`) %>%
+  summarise(antall=n())%>%
+  arrange(desc(antall))
+#13 missing hensiktkode. Save an output of APEC_all_merged to identify PJS numbers missing hensiktskode:
+
+write_delim(APEC_all_merged, "data/APEC_all_merged_070525.txt", delim = "\t")
+#errors in PJS corrected. Also need to include another "hensikt" in the extraction of data from PJS. Asked Madelaine to fix it. Will run the code again when metadata are updated.
+```
+
+
+```{r}
 #Solveig trying to summarize MLST and serotype results:
 MLST_count <-APEC_all_merged %>%
   select(`mlst/sequence_type`)%>%
   group_by(`mlst/sequence_type`)%>%
   summarise(antall=n())%>%
   arrange(desc(antall))
+#29 missing mlst, should try to run these again, perhaps on SAGA?
 
 serotype_count <- APEC_all_merged %>%
   select(`SeroTypeFinder/SeroType`)%>%
@@ -104,4 +128,27 @@ mlst_and_serotype_count <- APEC_all_merged %>%
   arrange(desc(antall))
 ```
 
+```{r}
+#Solveig check how many isolates per produsentnr
+prodnr_count <-APEC_all_merged %>%
+  select(`produsentnr`) %>%
+  group_by(`produsentnr`) %>%
+  summarise(antall=n()) %>%
+  arrange(desc(antall))
+#several samples from APEC-Seq missing information regarding produsentnr. Try to fix this in an easy way?
+
+#Check how many isolates per saksnr
+sak_count <- APEC_all_merged %>%
+  select(`sak`) %>%
+  group_by(`sak`) %>%
+  summarise(antall=n()) %>%
+  arrange(desc(antall))
+
+#Check sak per produsentnr
+sak_prod_count <- APEC_all_merged %>%
+  select(`sak`,`produsentnr`) %>%
+  group_by(`produsentnr`, `sak`) %>%
+  summarise(antall=n(), .groups ="drop") %>%
+  arrange(desc(`produsentnr`))
+```
 
