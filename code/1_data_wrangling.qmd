@@ -71,13 +71,13 @@ sapply(fun_files_path,source,.GlobalEnv)
 
 ```{r merge files from VIGAS and PJS}
 #Solveig trying to merge files from VIGAS and metadata from PJS:
-VIGAS_data <- read_xlsx("data/2025-3-27-APEC_all-All_Fields.xlsx")%>%
+VIGAS_data <- read_xlsx("data/2025-7-2-APEC_all-All_Fields.xlsx")%>%
   mutate(Year = substr(Sample,1,4))%>%
   filter(Year !="2015")%>%
   filter(Year !="2025")
 #removed samples from 2015 and 2025, which should not be included in this study.
-PJS_data <- read_xlsx("data/Uttrekk_PJS_060525_SSM.xlsx") 
-#797 samples to be included in this APEC study. Merge file from VIGAS with file from PJS:
+PJS_data <- read_xlsx("data/Uttrekk_PJS_010725_SSM.xlsx") 
+#797/799(?) samples to be included in this APEC study. Merge file from VIGAS with file from PJS:
 APEC_all_merged <- VIGAS_data %>%
   dplyr::left_join(PJS_data, by = c("Sample"="ID"))
 #APEC_all_merged includes data for the 797 included samples.
@@ -91,7 +91,7 @@ missing_PJS_data_artnavn <- APEC_all_merged %>%
   summarise(antall=n())%>%
   arrange(desc(antall))
 
-#16 missing information regarding artnavn.
+#3 missing information regarding artnavn.
 
 #check if any are missing hensikt, indicate that data have not been extracted from PJS:
 missing_PJS_hensikt <- APEC_all_merged %>%
@@ -99,9 +99,9 @@ missing_PJS_hensikt <- APEC_all_merged %>%
   group_by(`hensiktkode`) %>%
   summarise(antall=n())%>%
   arrange(desc(antall))
-#13 missing hensiktkode. Save an output of APEC_all_merged to identify PJS numbers missing hensiktskode:
+#None missing hensiktkode after updated PJS uttrekk. Save an output of APEC_all_merged to identify PJS numbers missing hensiktskode:
 
-write_delim(APEC_all_merged, "data/APEC_all_merged_070525.txt", delim = "\t")
+#write_delim(APEC_all_merged, "data/APEC_all_merged_070525.txt", delim = "\t")
 #errors in PJS corrected. Also need to include another "hensikt" in the extraction of data from PJS. Asked Madelaine to fix it. Will run the code again when metadata are updated.
 ```
 
@@ -136,6 +136,7 @@ prodnr_count <-APEC_all_merged %>%
   summarise(antall=n()) %>%
   arrange(desc(antall))
 #several samples from APEC-Seq missing information regarding produsentnr. Try to fix this in an easy way?
+#update July 2025: Information regarding produsentnummer available for all isolates.
 
 #Check how many isolates per saksnr
 sak_count <- APEC_all_merged %>%
@@ -150,5 +151,6 @@ sak_prod_count <- APEC_all_merged %>%
   group_by(`produsentnr`, `sak`) %>%
   summarise(antall=n(), .groups ="drop") %>%
   arrange(desc(`produsentnr`))
+#cannot get this to work properly - would like it to count number of sak per produsentnummer, but it lists produsentnr and sak and how many isolates are from that one sak. How can we check number of sak per produsent?
 ```
 
