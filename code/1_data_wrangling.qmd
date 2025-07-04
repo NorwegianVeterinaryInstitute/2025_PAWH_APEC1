@@ -178,6 +178,10 @@ length(unique(APEC_all_merged_cleaned$Sample)) # 796 isolates with MLST
 
 # glimpse(enterobase)
 # View(enterobase)
+
+# export data 
+#View(APEC_all_merged_cleaned)
+write_csv(APEC_all_merged_cleaned, "result/APEC_all_enterobase_cleaned.csv_2025-07-04.csv")
 ```
 
 
