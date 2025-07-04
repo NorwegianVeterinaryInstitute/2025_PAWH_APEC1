@@ -38,7 +38,8 @@ library(here)
 library(tidyverse)
 library(readxl)
 library(dplyr)
-library(nplyr) # added for operations on nested columns
+#library(xlsx)
+#library(nplyr) # added for operations on nested columns
 ```
 
 
@@ -175,6 +176,8 @@ APEC_all_merged_cleaned <-
 glimpse(APEC_all_merged_cleaned)    
 dim(APEC_all_merged_cleaned)
 
+length(unique(APEC_all_merged_cleaned$Sample)) # 796 isolates with MLST
+
 # glimpse(enterobase)
 # View(enterobase)
 ```
@@ -194,19 +197,57 @@ glimpse(camila_virulence_genes)
 
 
 ```{r}
+# Verifying length unique samples
+APEC_all_merged_cleaned %>%
+  select(Sample, `Virulence_Finder/VirulenceGenes:ProteinName`) %>%
+  pull(Sample) %>% unique() %>% length()
+  
+# Creating the long table 
 APEC_all_merged_cleaned_long <- 
   APEC_all_merged_cleaned %>%
   dplyr::rename(tosplit = `Virulence_Finder/VirulenceGenes:ProteinName`) %>%
-  #select(Sample, tosplit) %>%
-  separate_longer_delim(tosplit, delim = ",") %>%
-  separate(tosplit, into = c("VF_gene_name", "VF_gene_description"), sep = ": ", fill = "left") %>%
-  dplyr::mutate_at(vars(VF_gene_name, VF_gene_description), ~ str_trim(.)) %>%
-  # filtering out the rows from the list of Camilas virulence genes
+  tidyr::separate_longer_delim(tosplit, delim = ",") %>%
+  tidyr::separate(tosplit, into = c("VF_gene_name", "VF_gene_description"), sep = ": ", fill = "right") %>%
+  dplyr::mutate_at(vars(VF_gene_name, VF_gene_description), ~ str_trim(.))
+
+# checking number isolates 
+APEC_all_merged_cleaned_long %>%
+  select(Sample, VF_gene_name) %>%
+  pull(Sample) %>% unique() %>% length() # 796 ok
+```
+
+Filter the long table to keep only the virulence genes from Camila
+```{r}
+in_camila_list <- 
+  APEC_all_merged_cleaned_long %>%
   filter(VF_gene_name %in% camila_virulence_genes$Gene_name) %>%
-  distinct()
-  
-nb_unique_genes = length(unique(APEC_all_merged_cleaned_long$VF_gene_name))  
+  distinct() 
+
+# nb isolates in Camilas' list
+
+in_camila_list %>%
+  select(Sample, VF_gene_name) %>%
+  pull(Sample) %>% unique() %>% length() # 783 
+
+dim(in_camila_list)
+# isolates where genes were not in Camila's list
+APEC_all_merged_cleaned %>%
+  anti_join(in_camila_list %>% select(Sample)) %>%
+  select(Sample,`Virulence_Finder/VirulenceGenes:ProteinName`) %>%
+  write_csv("results/APEC_all_merged_cleaned_genes_not_in_camila_list.csv")
+```
+
+> 13 isolates had non of the genes that were in Camila's list  
+> 783 isolates had a least one of the gene in Camila's list
+
+
+```{r}
+# control
+nb_unique_genes = length(unique(in_camila_list$VF_gene_name))  
 nb_unique_genes
+
+length(unique(in_camila_list$Sample))
+# 783 --- 
 ```
 
 
@@ -216,20 +257,267 @@ Now its in the long format so we can make summary statistics
 
 - How many have all genes
 ```{r}
-APEC_all_merged_cleaned_long %>%
+summary_nb_genes <- 
+  in_camila_list %>%
   group_by(Sample) %>%
   #filter(Sample == "2018-01-3168-1-2-1-1") %>%
   #select(Sample, VF_gene_name, VF_gene_description) %>%
   summarise(nb_genes = n()) %>%
-  View()
+  arrange(desc(nb_genes)) 
 
-  filter(nb_genes == nb_unique_genes) %>%
-  summarise(total = n())
-# 34 samples have all genes
+summary_nb_genes_df <- 
+  summary_nb_genes %>%
+  ungroup() %>%
+  group_by(nb_genes) %>%
+  summarise(nb_isolates_with_nb_genes = n()) %>%
+  arrange(desc(nb_genes))
+
+# if the results directory does not exist, create it
+if (!dir.exists("results")) {
+  dir.create("results")
+}
+
+summary_nb_genes_df %>% 
+  write_csv("results/summary_nb_genes.csv")
+```
+
+> 34 samples have all genes in Camila's list
+>  the detail of nb of genes in the table results/summary_nb_genes.csv
+> 749 isolates do not have all the isolates in Camillas list but have a bit one in the list 
+> 13 isolates do not have any genes that were listed in Camila's list
+
+```{r}
+# How many isolates have all genes VS other genes
+summary_nb_genes_df %>% 
+  mutate(group = ifelse(nb_genes == nb_unique_genes, "All genes", "Not all genes")) %>%
+  group_by(group) %>%
+  summarise(nb_isolates = sum(nb_isolates_with_nb_genes)) %>%
+  write_csv("results/summary_nb_genes_groups_totals.csv")
+  
+```
+
+- long format for the table with genes
+```{r}
+APEC_all_merged_cleaned_wide <- 
+  in_camila_list %>%
+  select(-VF_gene_description) %>%
+  distinct() %>%
+  mutate(present = "Yes") %>%
+  pivot_wider(
+    names_from = VF_gene_name,
+    names_glue = "VF_gene_{VF_gene_name}",
+    values_from = present, 
+    values_fill = "No"
+  ) 
+
+length(unique(APEC_all_merged_cleaned_wide$Sample)) # 783 ok 
+glimpse(APEC_all_merged_cleaned_wide)  
+
+write_csv(APEC_all_merged_cleaned_wide,
+          "results/APEC_all_merged_cleaned_wide.csv")
+```
+
+- creating table with combination of genes 
+```{r}
+APEC_all_merged_cleaned_combination <- 
+  in_camila_list %>%
+  arrange(Sample, VF_gene_name) %>%
+  group_by(Sample) %>%
+  summarise(VF_genes_combination = paste(VF_gene_name, collapse = ","), .groups = "drop")
+
+dim(APEC_all_merged_cleaned_combination) # 783 isolates with combinations of genes
+
+APEC_all_merged_cleaned_combination %>%
+  write_csv("results/APEC_all_merged_cleaned_combination_genes_per_isolate.csv")
+```
+
+- now we can group the combinations
+```{r}
+APEC_all_merged_cleaned_combination %>%
+  group_by(VF_genes_combination) %>%
+  summarise(nb_isolates = n(), .groups = "drop") %>%
+  arrange(desc(nb_isolates)) %>%
+  write_csv("results/APEC_all_merged_cleaned_combination.csv")
+```
+
+- summary STs only (note here all 796 isolates)
+```{r}
+#dim(APEC_all_merged_cleaned)
+
+APEC_all_merged_cleaned %>%
+  rename(ST = `mlst/sequence_type`) %>%
+  select(Sample, ST) %>%
+  group_by(ST) %>%
+  summarise(nb_isolates = n(), .groups = "drop") %>%
+  arrange(desc(nb_isolates)) %>%
+  write_csv("results/APEC_ST_summary.csv")
 ```
 
 
-# Summary
+- check for association with ST for the combinations of genes in Camila's list
+```{r}
+# The combination per sample  
+#dim(APEC_all_merged_cleaned_combination)
+
+# need to be merged to the ST 
+APEC_ST_genes_combination <- 
+  APEC_all_merged_cleaned_combination %>%
+  # left_join to get the ST information
+  left_join(APEC_all_merged_cleaned %>% 
+              select(Sample, `mlst/sequence_type`),
+            by = "Sample") %>%
+  rename(ST = `mlst/sequence_type`) %>%
+  # contingency table genes combination and ST 
+  group_by(VF_genes_combination, ST) %>%
+  summarise(nb_isolates = n(), .groups = "drop") %>%
+  # dirty way to sort the longest combination first
+  mutate(length_combination = str_length(VF_genes_combination)) %>%
+  arrange(desc(length_combination))  %>%
+  select(-length_combination) 
+  
+View(APEC_ST_genes_combination)
+
+write_csv(APEC_ST_genes_combination, 
+          "results/APEC_ST_genes_combination.csv")  
+```
+
+
+# HERE
+Maybe a littple plot of gene combination and ST
+- let say we will filter out genes combinations where there are less than 10 isolates
+
+```{r}
+graph_data <- 
+  APEC_ST_genes_combination %>%
+  group_by(VF_genes_combination) %>%
+  mutate(sum_gene_combination = sum(nb_isolates)) %>%
+  group_by(ST) %>%
+  mutate(sum_ST = sum(nb_isolates))
+```
+
+
+```{r}
+plot_combination_ST <- 
+  graph_data %>%
+  filter(sum_gene_combination >= 10) %>%
+  ggplot(aes(x = VF_genes_combination, y= nb_isolates, fill = ST)) +
+  # rectangle
+  geom_col(position = "stack", show.legend = FALSE,  linewidth = 0.2, color = "black") +
+  geom_text(
+    aes(label = ST), # The label content will be the ST value
+    position = position_stack(vjust = 0.5), # Crucial for centering text in stacked bars
+    color = "black", # Adjust label color for readability
+    size = 1      # Adjust label size as needed
+  ) +
+  scale_x_discrete(guide = guide_axis(angle = 45)) +
+  labs(title = "Gene combinations and STs",
+       subtitle = "ST are indicated in the bars",
+       x = "Gene combinations",
+       y = "Number of isolates)",
+       color = "ST") +
+  theme_bw() 
+
+ggsave("results/plot_combination_ST.png", 
+       plot = plot_combination_ST, 
+       width = 30, height = 30,
+       units = "cm",
+       dpi = 300, 
+       limitsize = FALSE)
+```
+
+Otherway to see: ST and then combination as fill collors:
+```{r}
+  graph_data %>%
+  filter(sum_ST >= 10) %>%
+  pull(VF_genes_combination) %>%
+  unique() %>% length() # 44 combinations of genes
+
+# so we cant put annotations like that 
+plot_ST_combination <- 
+  graph_data %>%
+  filter(sum_ST >= 10) %>%
+  # creating a factor for numbering
+  mutate(Factor_combination = factor(VF_genes_combination, 
+                                          levels = unique(VF_genes_combination))) %>%
+  mutate(Factor_combination = as.character(as.integer(Factor_combination))) %>%
+  mutate(VF_genes_combination = 
+           paste(Factor_combination, ": ", VF_genes_combination)) %>%
+  ggplot(aes(x = ST, y= nb_isolates, fill = VF_genes_combination)) +
+  # rectangle
+  geom_col(position = "stack", show.legend = T,  linewidth = 0.2, color = "black") +
+  geom_text(
+    aes(label = Factor_combination), # The label content will be the number of the conbination
+    position = position_stack(vjust = 0.5), 
+    color = "black", 
+    size = 1
+  ) +
+  scale_x_discrete(guide = guide_axis(angle = 45)) +
+  labs(title = "ST and Gene combinations",
+       subtitle = "Gene combinations identifiers are indicated in the bars",
+       x = "ST",
+       y = "Number of isolates)",
+       color = "Gene combinations") +
+  theme_bw() +
+  theme(legend.position = "bottom", 
+    legend.title = element_text(size = 8),
+    legend.text = element_text(size = 6),
+    legend.key.size = unit(0.5, "cm")
+    ) 
+
+
+ggsave("results/plot_ST_combination.png", 
+       plot = plot_ST_combination, 
+       width = 30, height = 30,
+       units = "cm",
+       dpi = 300, 
+       limitsize = FALSE)
+```
+
+  
+# Other summaries 
+This will include the 13 with no results in Camila's list
+```{r}
+APEC_all_merged_cleaned %>%
+  names()
+```
+
+
+```{r}
+other_summmaries_df <- 
+APEC_all_merged_cleaned %>%
+  select(`produsentnr`, `saksnr`)
+```
+
+- nb of saksnumber per produsent number
+```{r}
+antall_sak_per_produsent_df <- 
+  other_summmaries_df %>%
+  group_by(`produsentnr`) %>%
+  # remove the lignes were same sak was registred - allows to count sak
+  distinct() %>%
+  summarise(antall_sak_per_produsent = n(), .groups = "drop") %>%
+  arrange(desc(antall_sak_per_produsent)) 
+
+write_csv(antall_sak_per_produsent_df,  "results/APEC_antall_sak_per_produsent.csv")
+```
+
+- nb isolates per farm (produsent number)
+
+```{r}
+antall_isolater_per_produsent_df <- 
+  other_summmaries_df %>%
+  group_by(`produsentnr`) %>%
+  # here no filtering -> because the number of rows equals the number of isolates
+  summarise(antall_isolater_per_produsent = n(), .groups = "drop") %>%
+  arrange(desc(antall_isolater_per_produsent))
+
+antall_isolater_per_produsent_df %>%
+  write_csv("results/APEC_antall_isolater_per_produsent.csv")
+
+```
+
+
+# Summary SOLVEIG (I did not look at those)
  
 ```{r}
 #Solveig trying to summarize MLST and serotype results:
