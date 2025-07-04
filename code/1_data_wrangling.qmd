@@ -38,6 +38,7 @@ library(here)
 library(tidyverse)
 library(readxl)
 library(dplyr)
+library(nplyr) # added for operations on nested columns
 ```
 
 
@@ -192,11 +193,39 @@ glimpse(camila_virulence_genes)
 ```
 
 
-Gene_name
-
-
 ```{r}
+APEC_all_merged_cleaned_long <- 
+  APEC_all_merged_cleaned %>%
+  dplyr::rename(tosplit = `Virulence_Finder/VirulenceGenes:ProteinName`) %>%
+  #select(Sample, tosplit) %>%
+  separate_longer_delim(tosplit, delim = ",") %>%
+  separate(tosplit, into = c("VF_gene_name", "VF_gene_description"), sep = ": ", fill = "left") %>%
+  dplyr::mutate_at(vars(VF_gene_name, VF_gene_description), ~ str_trim(.)) %>%
+  # filtering out the rows from the list of Camilas virulence genes
+  filter(VF_gene_name %in% camila_virulence_genes$Gene_name) %>%
+  distinct()
+  
+nb_unique_genes = length(unique(APEC_all_merged_cleaned_long$VF_gene_name))  
+nb_unique_genes
+```
 
+
+Now its in the long format so we can make summary statistics
+
+# Summary statistics for virulence genes
+
+- How many have all genes
+```{r}
+APEC_all_merged_cleaned_long %>%
+  group_by(Sample) %>%
+  #filter(Sample == "2018-01-3168-1-2-1-1") %>%
+  #select(Sample, VF_gene_name, VF_gene_description) %>%
+  summarise(nb_genes = n()) %>%
+  View()
+
+  filter(nb_genes == nb_unique_genes) %>%
+  summarise(total = n())
+# 34 samples have all genes
 ```
 
 
