@@ -579,11 +579,21 @@ mlst_and_serotype_count <- APEC_all_merged_cleaned%>%
 APEC_all_merged_cleaned_virulenceprofile <- APEC_all_merged_cleaned %>%
   dplyr::left_join(APEC_all_merged_cleaned_combination, by = c("Sample" = "Sample"))
 
+#Summarise different combinations of ST, serotype and virulence per sak per producer
 ST_serotype_virulence_prod <- APEC_all_merged_cleaned_virulenceprofile %>%
   group_by(produsentnr, sak, `mlst/sequence_type`, `SeroTypeFinder/SeroType`, VF_genes_combination) %>%
   summarise(antall =n(), .groups ="drop")
 
 write_csv(ST_serotype_virulence_prod, "C:/GITS/2025_PAWH_APEC1/preliminary_results/ST_serotype_virulence_prod.csv")
+
+#merge with antall_sak_per_produsent to be able to see if different variant are present across sak:
+
+
+ST_serotype_vir_prod_multiple_sak <- ST_serotype_virulence_prod %>%
+  dplyr::left_join(antall_sak_per_produsent_df, by = c("produsentnr"="produsentnr"))
+write_csv(ST_serotype_vir_prod_multiple_sak, "C:/GITS/2025_PAWH_APEC1/preliminary_results/ST_serotype_vir_prod_multiple_sak.csv")
+#Could not get it to work with filtering on antall sak, so will do that in excel.
+  
 ```
 
 
