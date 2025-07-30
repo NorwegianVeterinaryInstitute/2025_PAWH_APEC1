@@ -571,6 +571,21 @@ mlst_and_serotype_count <- APEC_all_merged_cleaned%>%
   
 ```
 
+-Solveig try to summarise number of isolates with the same sT, serotpe, virulence profile per producer, also including sak(?)
+
+```{r}
+#Start by merging APEC_all_merged_cleaned and APEC_all_merged_cleaned_combination to add a column describing the combination of relevant virulence genes present per isolate:
+
+APEC_all_merged_cleaned_virulenceprofile <- APEC_all_merged_cleaned %>%
+  dplyr::left_join(APEC_all_merged_cleaned_combination, by = c("Sample" = "Sample"))
+
+ST_serotype_virulence_prod <- APEC_all_merged_cleaned_virulenceprofile %>%
+  group_by(produsentnr, sak, `mlst/sequence_type`, `SeroTypeFinder/SeroType`, VF_genes_combination) %>%
+  summarise(antall =n(), .groups ="drop")
+
+write_csv(ST_serotype_virulence_prod, "C:/GITS/2025_PAWH_APEC1/preliminary_results/ST_serotype_virulence_prod.csv")
+```
+
 
 
 # Summary SOLVEIG (I did not look at those)
