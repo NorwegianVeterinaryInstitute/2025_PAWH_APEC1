@@ -596,6 +596,48 @@ write_csv(ST_serotype_vir_prod_multiple_sak, "C:/GITS/2025_PAWH_APEC1/preliminar
   
 ```
 
+-Solveig trying to include data on driftsform for samples missing this info by using a similar approach as Eve did on MLST from enterobase
+
+```{r}
+# updating current driftsformnavn - produksjondyr changed to NA, two registered as "Foreldredyr, konsumeggproduksjon" are updated to "Foreldredyr, kjøttproduksjon" (wrong in PJS), one registered as "Livdyroppdrett" updated to "Foreldredyr, konsumeggproduksjon":
+glimpse(APEC_all_merged_cleaned)
+APEC_all_merged_driftsformnavn <- 
+  APEC_all_merged_cleaned %>%
+  dplyr::mutate(driftsformnavn = 
+                  ifelse(driftsformnavn == "Produksjonsdyr", NA, driftsformnavn))%>%
+  dplyr::mutate(driftsformnavn =
+                  ifelse(driftsformnavn == "Foreldredyr, konsumeggproduksjon", "Foreldredyr, kjøttproduksjon", driftsformnavn))%>%
+  dplyr::mutate(driftsformnavn =
+                  ifelse(driftsformnavn == "Livdyroppdrett", "Foreldredyr, konsumeggproduksjon", driftsformnavn))
+
+
+# import updated driftsformnavn
+driftsformnavn_updated <- 
+  read_xlsx("C:/GITS/2025_PAWH_APEC1/data/art_mangler_oppklaring.xlsx", na = "ND")%>%
+  select(sak, driftsform_sjekket)
+
+
+# completing APEC_all_merged 
+APEC_all_merged_driftsformnavn <- 
+  APEC_all_merged_driftsformnavn %>%
+  dplyr::left_join(driftsformnavn_updated, by = c("sak" = "sak")) 
+  # first check filtering if NA and check - after I comment
+APEC_driftsformsjekk <- APEC_all_merged_driftsformnavn %>%
+  #dplyr::select(sak, driftsformnavn, driftsform_sjekket) %>%
+  #dplyr::filter(is.na(driftsformnavn)) %>%
+  # replacing NA in `driftsformnavn` with `driftsform_sjekket`
+  dplyr::mutate(driftsformnavn = ifelse(is.na(driftsformnavn), `driftsform_sjekket`, driftsformnavn))%>% 
+  # removing the extra column from enterobase
+  dplyr::select(-driftsform_sjekket) %>%
+
+
+# new control :  794 isolates with driftsformnavn OK
+glimpse(APEC_driftsformsjekk)    
+dim(APEC_driftsformsjekk)
+
+# export data 
+write.csv(APEC_driftsformsjekk, "C:/GITS/2025_PAWH_APEC1/preliminary_results/APEC_driftsformsjekk.csv")
+```
 
 
 # Summary SOLVEIG (I did not look at those)
