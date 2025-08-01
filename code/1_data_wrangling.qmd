@@ -628,7 +628,7 @@ APEC_driftsformsjekk <- APEC_all_merged_driftsformnavn %>%
   # replacing NA in `driftsformnavn` with `driftsform_sjekket`
   dplyr::mutate(driftsformnavn = ifelse(is.na(driftsformnavn), `driftsform_sjekket`, driftsformnavn))%>% 
   # removing the extra column from enterobase
-  dplyr::select(-driftsform_sjekket) %>%
+  dplyr::select(-driftsform_sjekket)
 
 
 # new control :  794 isolates with driftsformnavn OK
@@ -637,6 +637,29 @@ dim(APEC_driftsformsjekk)
 
 # export data 
 write.csv(APEC_driftsformsjekk, "C:/GITS/2025_PAWH_APEC1/preliminary_results/APEC_driftsformsjekk.csv")
+```
+
+-Solveig trying to associate virulence genes, serotype and ST to driftsform
+
+```{r}
+# The combination per sample  
+#dim(APEC_all_merged_cleaned_combination)
+
+# need to be merged to the ST 
+APEC_ST_genes_driftsform_combination <- 
+  APEC_driftsformsjekk %>%
+  # left_join to get the ST, serotype and driftsform information
+  left_join(APEC_all_merged_cleaned_combination, by = "Sample")
+
+#Summarise different combinations of ST, serotype and virulence per sak per producer
+driftsform_ST_serotype_virulence_prod <- APEC_ST_genes_driftsform_combination %>%
+  group_by(driftsformnavn, `mlst/sequence_type`, `SeroTypeFinder/SeroType`, VF_genes_combination) %>%
+  summarise(antall =n(), .groups ="drop") %>%
+  arrange(desc(antall))
+
+write_csv(driftsform_ST_serotype_virulence_prod, "C:/GITS/2025_PAWH_APEC1/preliminary_results/driftsform_ST_serotype_virulence_prod.csv")
+ 
+
 ```
 
 
