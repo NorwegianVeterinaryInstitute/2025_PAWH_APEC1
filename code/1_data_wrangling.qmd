@@ -667,9 +667,20 @@ driftsform_ST_serotype_virulence_prod <- APEC_ST_genes_driftsform_combination %>
 ```{r}
 APEC_AMR <- APEC_ST_genes_driftsform_combination%>%
   select(Sample, `RPF2403/PointFinder-Mutations`, `RPF2403/PointFinder-Phenotypes`, `RPF2403/ResFinder-Genes`, `RPF2403/ResFinder-Phenotypes`)%>%
-  group_by(`RPF2403/ResFinder-Genes`,`RPF2403/PointFinder-Phenotypes`)%>%
+  group_by(`RPF2403/ResFinder-Genes`,`RPF2403/PointFinder-Mutations`)%>%
   summarise(antall =n(), .groups = "drop")%>%
   arrange(desc(antall))
+
+write_csv(APEC_AMR, "C:/GITS/2025_PAWH_APEC1/preliminary_results/APEC_AMR.csv")
+
+#Including driftsform
+APEC_AMR_driftsform <- APEC_ST_genes_driftsform_combination%>%
+  select(Sample, `RPF2403/PointFinder-Mutations`, `RPF2403/PointFinder-Phenotypes`, `RPF2403/ResFinder-Genes`, `RPF2403/ResFinder-Phenotypes`, driftsformnavn)%>%
+  group_by(`RPF2403/ResFinder-Genes`,`RPF2403/PointFinder-Mutations`, driftsformnavn)%>%
+  summarise(antall =n(), .groups = "drop")%>%
+  arrange(desc(antall))
+
+write_csv(APEC_AMR_driftsform, "C:/GITS/2025_PAWH_APEC1/preliminary_results/APEC_AMR_driftsform.csv")
 ```
 
 
