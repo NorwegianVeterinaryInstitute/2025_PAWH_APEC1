@@ -185,7 +185,7 @@ length(unique(APEC_all_merged_cleaned$Sample)) # 796 isolates with MLST, updated
 # export data 
 #View(APEC_all_merged_cleaned)
 #write_csv(APEC_all_merged_cleaned, "result/APEC_all_enterobase_cleaned.csv_2025-07-04.csv")
-write.csv(APEC_all_merged_cleaned, "C:/GITS/2025_PAWH_APEC1/preliminary_results/APEC_all_enterobase_cleaned_290725.csv")
+#write.csv(APEC_all_merged_cleaned, "C:/GITS/2025_PAWH_APEC1/preliminary_results/APEC_all_enterobase_cleaned_290725.csv")
 ```
 
 
@@ -288,7 +288,7 @@ if (!dir.exists("results")) {
 
 summary_nb_genes_df %>% 
   #write_csv("results/summary_nb_genes.csv")
-  write_csv("C:/GITS/2025_PAWH_APEC1/preliminary_results/summary_nb_genes.csv")
+  #write_csv("C:/GITS/2025_PAWH_APEC1/preliminary_results/summary_nb_genes.csv")
 ```
 
 > 34 samples have all genes in Camila's list (still 34, 29.07.25)
@@ -301,9 +301,9 @@ summary_nb_genes_df %>%
 summary_nb_genes_df %>% 
   mutate(group = ifelse(nb_genes == nb_unique_genes, "All genes", "Not all genes")) %>%
   group_by(group) %>%
-  summarise(nb_isolates = sum(nb_isolates_with_nb_genes)) %>%
+  summarise(nb_isolates = sum(nb_isolates_with_nb_genes)) #%>%
   #write_csv("results/summary_nb_genes_groups_totals.csv")
-  write_csv("C:/GITS/2025_PAWH_APEC1/preliminary_results/summary_isolates_with_nb_genes.csv")
+  #write_csv("C:/GITS/2025_PAWH_APEC1/preliminary_results/summary_isolates_with_nb_genes.csv")
   
 ```
 
@@ -323,7 +323,7 @@ APEC_all_merged_cleaned_wide <-
 
 length(unique(APEC_all_merged_cleaned_wide$Sample)) # 783 ok, 781 OK 29.07.25 
 glimpse(APEC_all_merged_cleaned_wide)  
-write_csv(APEC_all_merged_cleaned_wide, "C:/GITS/2025_PAWH_APEC1/preliminary_results/APEC_all_merged_cleaned_wide.csv")
+#write_csv(APEC_all_merged_cleaned_wide, "C:/GITS/2025_PAWH_APEC1/preliminary_results/APEC_all_merged_cleaned_wide.csv")
 #write_csv(APEC_all_merged_cleaned_wide,
  #         "results/APEC_all_merged_cleaned_wide.csv")
 ```
@@ -338,8 +338,8 @@ APEC_all_merged_cleaned_combination <-
 
 dim(APEC_all_merged_cleaned_combination) # 783 isolates with combinations of genes, 781 isolates 29.07.25
 
-APEC_all_merged_cleaned_combination %>%
-  write_csv("C:/GITS/2025_PAWH_APEC1/preliminary_results/APEC_all_merged_cleaned_combination_genes_per_isolate.csv")
+#APEC_all_merged_cleaned_combination %>%
+  #write_csv("C:/GITS/2025_PAWH_APEC1/preliminary_results/APEC_all_merged_cleaned_combination_genes_per_isolate.csv")
   #write_csv("results/APEC_all_merged_cleaned_combination_genes_per_isolate.csv")
 ```
 
@@ -348,8 +348,8 @@ APEC_all_merged_cleaned_combination %>%
 APEC_all_merged_cleaned_combination %>%
   group_by(VF_genes_combination) %>%
   summarise(nb_isolates = n(), .groups = "drop") %>%
-  arrange(desc(nb_isolates)) %>%
-  write_csv("C:/GITS/2025_PAWH_APEC1/preliminary_results/APEC_all_merged_cleaned_combination.csv")
+  arrange(desc(nb_isolates)) #%>%
+  #write_csv("C:/GITS/2025_PAWH_APEC1/preliminary_results/APEC_all_merged_cleaned_combination.csv")
   #write_csv("results/APEC_all_merged_cleaned_combination.csv")
 ```
 
@@ -362,8 +362,8 @@ APEC_all_merged_cleaned %>%
   select(Sample, ST) %>%
   group_by(ST) %>%
   summarise(nb_isolates = n(), .groups = "drop") %>%
-  arrange(desc(nb_isolates)) %>%
-write_csv("C:/GITS/2025_PAWH_APEC1/preliminary_results/APEC_ST_summary.csv")
+  arrange(desc(nb_isolates)) #%>%
+#write_csv("C:/GITS/2025_PAWH_APEC1/preliminary_results/APEC_ST_summary.csv")
   #write_csv("results/APEC_ST_summary.csv")
 ```
 
@@ -391,7 +391,7 @@ APEC_ST_genes_combination <-
   
 View(APEC_ST_genes_combination)
 
-write_csv(APEC_ST_genes_combination, "C:/GITS/2025_PAWH_APEC1/preliminary_results/APEC_ST_genes_combination.csv")
+#write_csv(APEC_ST_genes_combination, "C:/GITS/2025_PAWH_APEC1/preliminary_results/APEC_ST_genes_combination.csv")
 #write_csv(APEC_ST_genes_combination, 
           #"results/APEC_ST_genes_combination.csv")  
 ```
@@ -519,7 +519,7 @@ antall_sak_per_produsent_df <-
   distinct() %>%
   summarise(antall_sak_per_produsent = n(), .groups = "drop") %>%
   arrange(desc(antall_sak_per_produsent)) 
-write_csv(antall_sak_per_produsent_df, "C:/GITS/2025_PAWH_APEC1/preliminary_results/APEC_antall_sak_per_produsent.csv")
+#write_csv(antall_sak_per_produsent_df, "C:/GITS/2025_PAWH_APEC1/preliminary_results/APEC_antall_sak_per_produsent.csv")
 #write_csv(antall_sak_per_produsent_df,  "results/APEC_antall_sak_per_produsent.csv")
 ```
 
@@ -533,8 +533,8 @@ antall_isolater_per_produsent_df <-
   summarise(antall_isolater_per_produsent = n(), .groups = "drop") %>%
   arrange(desc(antall_isolater_per_produsent))
 
-antall_isolater_per_produsent_df %>%
-  write_csv("C:/GITS/2025_PAWH_APEC1/preliminary_results/APEC_antall_isolater_per_produsent.csv")
+#antall_isolater_per_produsent_df %>%
+  #write_csv("C:/GITS/2025_PAWH_APEC1/preliminary_results/APEC_antall_isolater_per_produsent.csv")
   #write_csv("results/APEC_antall_isolater_per_produsent.csv")
 
 ```
@@ -548,7 +548,7 @@ antall_isolater_per_sak <-
   summarise(antall_isolater_sak = n(), .groups = "drop") %>%
   arrange(desc(antall_isolater_sak))
 
-write_csv(antall_isolater_per_sak, "C:/GITS/2025_PAWH_APEC1/preliminary_results/APEC_ant_isolater_per_sak.csv")
+#write_csv(antall_isolater_per_sak, "C:/GITS/2025_PAWH_APEC1/preliminary_results/APEC_ant_isolater_per_sak.csv")
 ```
 
 
@@ -559,15 +559,15 @@ serotype_count <- APEC_all_merged_cleaned %>%
   select(`SeroTypeFinder/SeroType`)%>%
   group_by(`SeroTypeFinder/SeroType`)%>%
   summarise(antall=n())%>%
-  arrange(desc(antall))%>%
-  write_csv("C:/GITS/2025_PAWH_APEC1/preliminary_results/serotype_counts.csv")
+  arrange(desc(antall))#%>%
+  #write_csv("C:/GITS/2025_PAWH_APEC1/preliminary_results/serotype_counts.csv")
 
 mlst_and_serotype_count <- APEC_all_merged_cleaned%>%
   select(`mlst/sequence_type`, `SeroTypeFinder/SeroType`)%>%
   group_by(`SeroTypeFinder/SeroType`,`mlst/sequence_type`)%>%
   summarise(antall=n(), .groups = "drop")%>%
-  arrange(desc(antall))%>%
-  write_csv("C:/GITS/2025_PAWH_APEC1/preliminary_results/mlst_and_serotype_counts.csv")
+  arrange(desc(antall))#%>%
+  #write_csv("C:/GITS/2025_PAWH_APEC1/preliminary_results/mlst_and_serotype_counts.csv")
   
 ```
 
@@ -584,14 +584,14 @@ ST_serotype_virulence_prod <- APEC_all_merged_cleaned_virulenceprofile %>%
   group_by(produsentnr, sak, `mlst/sequence_type`, `SeroTypeFinder/SeroType`, VF_genes_combination) %>%
   summarise(antall =n(), .groups ="drop")
 
-write_csv(ST_serotype_virulence_prod, "C:/GITS/2025_PAWH_APEC1/preliminary_results/ST_serotype_virulence_prod.csv")
+#write_csv(ST_serotype_virulence_prod, "C:/GITS/2025_PAWH_APEC1/preliminary_results/ST_serotype_virulence_prod.csv")
 
 #merge with antall_sak_per_produsent to be able to see if different variant are present across sak:
 
 
 ST_serotype_vir_prod_multiple_sak <- ST_serotype_virulence_prod %>%
   dplyr::left_join(antall_sak_per_produsent_df, by = c("produsentnr"="produsentnr"))
-write_csv(ST_serotype_vir_prod_multiple_sak, "C:/GITS/2025_PAWH_APEC1/preliminary_results/ST_serotype_vir_prod_multiple_sak.csv")
+#write_csv(ST_serotype_vir_prod_multiple_sak, "C:/GITS/2025_PAWH_APEC1/preliminary_results/ST_serotype_vir_prod_multiple_sak.csv")
 #Could not get it to work with filtering on antall sak, so will do that in excel.
   
 ```
@@ -636,7 +636,7 @@ glimpse(APEC_driftsformsjekk)
 dim(APEC_driftsformsjekk)
 
 # export data 
-write.csv(APEC_driftsformsjekk, "C:/GITS/2025_PAWH_APEC1/preliminary_results/APEC_driftsformsjekk.csv")
+#write.csv(APEC_driftsformsjekk, "C:/GITS/2025_PAWH_APEC1/preliminary_results/APEC_driftsformsjekk.csv")
 ```
 
 -Solveig trying to associate virulence genes, serotype and ST to driftsform
@@ -657,9 +657,19 @@ driftsform_ST_serotype_virulence_prod <- APEC_ST_genes_driftsform_combination %>
   summarise(antall =n(), .groups ="drop") %>%
   arrange(desc(antall))
 
-write_csv(driftsform_ST_serotype_virulence_prod, "C:/GITS/2025_PAWH_APEC1/preliminary_results/driftsform_ST_serotype_virulence_prod.csv")
+#write_csv(driftsform_ST_serotype_virulence_prod, "C:/GITS/2025_PAWH_APEC1/preliminary_results/driftsform_ST_serotype_virulence_prod.csv")
  
 
+```
+
+-Solveig summarizing AMR results, only looking at colums called RPF2403/xx, as this is the most recent update
+
+```{r}
+APEC_AMR <- APEC_ST_genes_driftsform_combination%>%
+  select(Sample, `RPF2403/PointFinder-Mutations`, `RPF2403/PointFinder-Phenotypes`, `RPF2403/ResFinder-Genes`, `RPF2403/ResFinder-Phenotypes`)%>%
+  group_by(`RPF2403/ResFinder-Genes`,`RPF2403/PointFinder-Phenotypes`)%>%
+  summarise(antall =n(), .groups = "drop")%>%
+  arrange(desc(antall))
 ```
 
 
