@@ -5,7 +5,32 @@
 		}
 	],
 	"settings": {
+		"r.plot.defaults.fullWindowMode": true,
+		"r.removeLeadingComments": true,
+		"r.rmarkdown.knit.openOutputFile": true,
+		"r.terminalPath": "C:\\Program Files\\R\\R-4.4.3\\bin\\x64\\Rterm.exe",
+		"r.interpreterPath": "C:\\Program Files\\R\\R-4.4.3\\bin\\x64\\R.exe",
+		"r.lsp.debug": true,
+		"r.liveShare.defaults.shareWorkspace": false,
+		"r.lsp.multiServer": false,
+		"r.useRenvLibPath": true,
+		"r.plot.useHttpgd": true,
+		"r.session.useWebServer": true,
+		"r.lsp.promptToInstall": false,
 		"r.alwaysUseActiveTerminal": true,
-		"r.rterm.linux": ""
+		"r.rterm.linux": "",
+		"r.session.useWebServer": true
+	},
+	"extensions": {
+		"recommendations": [
+			"quarto.quarto",
+			"github.copilot",
+			"github.copilot-chat",
+			"ms-vscode.live-server",
+			"ms-vsliveshare.vsliveshare",
+			"reditorsupport.r",
+			"google.geminicodeassist",
+			"rdebugger.r-debugger"
+		]
 	}
 }
