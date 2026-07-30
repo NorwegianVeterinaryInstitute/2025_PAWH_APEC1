@@ -2,6 +2,7 @@ data/
 2025_PAWH_APEC1.Rproj
 2025_PAWH_APEC1.code-workspace
 renv 
+*.xlsx
 
 
 ##############
