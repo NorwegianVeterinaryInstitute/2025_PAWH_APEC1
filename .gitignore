@@ -53,6 +53,14 @@ vignettes/*.pdf
 # pkgdown site
 docs/
 
+##############
+# Quarto / viz render artifacts
+*.html
+*_files/
+/.quarto/
+code/*_cache/
+# (results/ incl. results/figures/ already ignored above)
+
 # translation temp files
 po/*~
 

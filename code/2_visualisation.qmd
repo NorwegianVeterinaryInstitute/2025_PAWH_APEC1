@@ -1,0 +1,45 @@
+---
+title: "2. Visualisation"
+author: "Eve Zeyl Fiskebeck"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+params:
+    cleaned_data: "results/APEC_all_enterobase_cleaned.csv"
+    source_code: 'code/R'
+    source_viz: 'code/R/viz'
+execute:
+  echo: false
+  cache: false
+format: html
+knitr:
+  opts_chunk:
+    collapse: true
+    comment: "#>"
+editor_options:
+  chunk_output_type: console
+---
+
+# Setup
+```{r setup}
+library(here)
+library(tidyverse)
+library(scales)
+```
+
+```{r source reused functions}
+fun_files_path <- c(
+  list.files(here::here(params$source_code), pattern = "*.R$", full.names = TRUE),
+  list.files(here::here(params$source_viz), pattern = "*.R$", full.names = TRUE)
+)
+sapply(fun_files_path, source, .GlobalEnv)
+```
+
+```{r load data}
+# point this at the latest cleaned/merged export from 1_data_wrangling.qmd
+# df <- read_csv(here::here(params$cleaned_data))
+```
+
+# Draft visualisations
+
+Each section below is a candidate chart for discussion with collaborators.
+Save drafts with `save_apec_plot(p, "name.png", stage = "drafts")`
+(writes to `results/figures/drafts/`, gitignored).
