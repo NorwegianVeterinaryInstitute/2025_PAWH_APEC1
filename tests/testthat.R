@@ -11,7 +11,7 @@ source("renv/activate.R")
 library(testthat)
 library(here)
 
-source(here::here("code", "R", "grouping_helpers.R"))
-source(here::here("code", "R", "check_spelling_homogeneity.R"))
+fun_files <- list.files(here::here("code", "R"), pattern = "*.R$", full.names = TRUE)
+invisible(lapply(fun_files, source))
 
 test_dir(here::here("tests", "testthat"))

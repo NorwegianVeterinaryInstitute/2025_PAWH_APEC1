@@ -37,6 +37,7 @@ Verified Folder code/R
 - [x] check_spelling_homogeneity.R [will have to do manual check also]
 - [x] grouping_helpers.R
 - [x] my_summary_fun.R
+- [ ] top_n_contingency.R
 
 - [ ] Verified this file
 
@@ -192,14 +193,14 @@ isolates_fixed <- isolates_raw %>%
 
 Additional manual check of the spelling 
 
-```{r verifying spelling}
+```{r verifying spelling, eval=FALSE}
 my_summary_fun(isolates_fixed, Sample) %>%
   write_csv(file.path(here::here(params$output_dir), "manual_check.csv"))
 ```
---> 
+-->
 
 ## 1.4 Cleaning: production type (broiler / parent flock)
-
+And transforming Norwegian to English 
 ```{r clean driftsform}
 isolates <- isolates_fixed %>%
   mutate(
@@ -253,10 +254,65 @@ n_distinct(isolates$variant)  # 134 distinct ST-Serotype combinations observed
 head(count(isolates, variant, sort = TRUE), 5)
 ```
 
-Compute how many ST and how many serotypes when keep top 5 variants - and how many others 
+## 1.6 ST, Serotype, variant contingency tables evaluation - top 5 / top 10 
+
+### Variants 
+
+```{r top n variant contingency}
+#  data, group_col, top_n, other_cols, other_label = "Other" 
+variant_contingency_top5 <- top_n_contingency(isolates, "variant", top_n = 5, other_cols = c("ST", "Serotype")) %>%
+  mutate(top_n = 5L)
+
+variant_contingency_top10 <- top_n_contingency(isolates, "variant", top_n = 10, other_cols = c("ST", "Serotype")) %>%
+  mutate(top_n = 10L)
 
 
-## 1.6 Grouping for figures: top-5 + "Other" (three strategies)
+
+kept_vs_other <- function(contingency, top_n) {
+  contingency %>%
+    mutate(group_value = if_else(group_value == "Other", "other", "kept")) %>%
+    summarise_contingency() %>%
+    mutate(top_n = top_n, .before = 1)
+}
+
+variant_threshold_summary <- bind_rows(
+  kept_vs_other(variant_contingency_top5, 5),
+  kept_vs_other(variant_contingency_top10, 10)
+)
+
+variant_threshold_summary
+```
+
+The direct answer - for the top 5 (or top 10) variants, how many distinct ST
+values and how many distinct Serotype values, and how many *other* ST/
+Serotype values are left outside that set:
+
+```{r top n variant counts wide}
+variant_threshold_counts <- variant_threshold_summary %>%
+  select(top_n, other_col, group_value, n_distinct_values) %>%
+  pivot_wider(
+    names_from = c(other_col, group_value),
+    values_from = n_distinct_values,
+    names_glue = "n_{other_col}_{group_value}"
+  )
+
+variant_threshold_counts
+```
+
+Reading this: keeping the top 5 variants names 5 STs and 5 serotypes, leaving
+86 other STs and 114 other serotypes unnamed; the top 10 variants name 8 STs
+and 10 serotypes, leaving 83 and 110. (Fewer than 10 *ST*s for the top-10
+case because a couple of STs repeat across two different top-10 variants,
+e.g. ST117 pairs with two different serotypes.)
+
+Or per-value, not collapsed to kept/other - `summarise_contingency()` used directly on the
+contingency table shows this for every individual kept variant too:
+
+```{r top n variant contingency per value}
+summarise_contingency(variant_contingency_top5)
+```
+
+## 1.7 Grouping for figures: top-5 + "Other" (three strategies)
 
 The notes flag an open question for Figure 8: *"ST and serotype as top five,
 or only ST as top five?"* - i.e. should ST and Serotype be bucketed to their
@@ -269,7 +325,8 @@ guesswork, and Figure 8's three examples can each pick whichever fits.
 isolates <- isolates %>%
   mutate(
     ST_top5 = top_n_other(ST, 5, other_label = "Other"),
-    ST_top5_label = if_else(ST_top5 == "Other", "Other ST", paste0("ST", ST_top5)),
+    # ST already reads "ST23" (prefixed in 1.5) - no second "ST" here
+    ST_top5_label = if_else(ST_top5 == "Other", "Other ST", ST_top5),
     Serotype_top5 = top_n_other(Serotype, 5, other_label = "Other Serotype"),
     variant_top5 = top_n_other(variant, 5, other_label = "Other")
   )
@@ -309,7 +366,7 @@ There's no free lunch here; Figure 8's three examples below use A, C and A
 again respectively (per the notes), so this table is the reference for judging
 what each one is trading away.
 
-## 1.7 Contingency tables + top 5 (ST, Serotype, variant)
+## 1.8 Contingency tables + top 5 (ST, Serotype, variant)
 
 ```{r contingency tables}
 st_contingency <- isolates %>%
@@ -353,12 +410,12 @@ saveRDS(contingency_tables, file.path(here::here(params$output_dir), "contingenc
 write_xlsx(contingency_tables, file.path(here::here(params$output_dir), "contingency_tables.xlsx"))
 ```
 
-## 1.8 Export the verified, tidy per-isolate dataset
+## 1.9 Export the verified, tidy per-isolate dataset
 
 ```{r export tidy isolates}
 isolates_tidy <- isolates %>%
   select(
-    Sample, Year, Case, production_type, Production, Species,
+    Sample, Year, Case, production_type, Species,
     ST, Serotype, variant, ST_top5, ST_top5_label, Serotype_top5, variant_top5
   )
 
