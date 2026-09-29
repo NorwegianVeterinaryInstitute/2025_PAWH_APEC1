@@ -3,7 +3,8 @@ title: "2. Visualisation"
 author: "Eve Zeyl Fiskebeck"
 date: "`r format(Sys.time(), '%d %B, %Y')`"
 params:
-    cleaned_data: "results/APEC_all_enterobase_cleaned.csv"
+    results_xlsx: "results/Results_130226_SSM.xlsx"
+    isolate_sheet: "APEC_driftsformsjekk_120226 (2)"
     source_code: 'code/R'
     source_viz: 'code/R/viz'
 execute:
@@ -17,12 +18,24 @@ knitr:
 editor_options:
   chunk_output_type: console
 ---
+<!--
+Source of truth: results/Results_130226_SSM.xlsx, sheet "APEC_driftsformsjekk_120226 (2)".
+This is the per-isolate table (1 row = 1 isolate) where driftsformnavn has already
+been backfilled from the external "driftsform_sjekket" lookup (see 1_data_wrangling.qmd) -
+the earlier "APEC_all_enterobase_cleaned_260" sheet still has driftsformnavn = NA for
+562/884 isolates and should NOT be used for the broiler/parent split.
+The other pre-aggregated summary sheets in the workbook are not used here; every
+figure below aggregates from this single per-isolate table so all counts stay
+consistent with each other.
+-->
 
 # Setup
 ```{r setup}
 library(here)
 library(tidyverse)
+library(readxl)
 library(scales)
+library(ggalluvial)
 ```
 
 ```{r source reused functions}
@@ -33,9 +46,111 @@ fun_files_path <- c(
 sapply(fun_files_path, source, .GlobalEnv)
 ```
 
+# Data import
+
 ```{r load data}
-# point this at the latest cleaned/merged export from 1_data_wrangling.qmd
-# df <- read_csv(here::here(params$cleaned_data))
+isolates_raw <- read_excel(
+  here::here(params$results_xlsx),
+  sheet = params$isolate_sheet
+)
+```
+
+# Data quality checks
+
+One row must equal one isolate, and the key fields used across every figure
+below (year, ST, serotype, production type) must be complete - if any of these
+checks fail, stop and fix the import rather than silently plotting partial data.
+
+```{r qc checks}
+qc <- list(
+  n_rows = nrow(isolates_raw),
+  n_distinct_sample = n_distinct(isolates_raw$Sample),
+  n_missing_year = sum(is.na(isolates_raw$Year)),
+  n_missing_ST = sum(is.na(isolates_raw[["mlst_scheme_list/sequence_type"]])),
+  n_missing_serotype = sum(is.na(isolates_raw[["SeroTypeFinder/SeroType"]])),
+  n_missing_driftsform = sum(is.na(isolates_raw$driftsformnavn)),
+  driftsform_categories = unique(isolates_raw$driftsformnavn)
+)
+qc
+
+stopifnot(
+  "one row per isolate expected" = qc$n_rows == qc$n_distinct_sample,
+  "Year must be complete" = qc$n_missing_year == 0,
+  "ST must be complete" = qc$n_missing_ST == 0,
+  "Serotype must be complete" = qc$n_missing_serotype == 0,
+  "driftsformnavn must be complete" = qc$n_missing_driftsform == 0
+)
+```
+
+# Cleaning: production type (broiler / parent flock)
+
+`driftsformnavn` has a known mojibake artifact (2 rows read as
+"Foreldredyr, kj�ttproduksjon" instead of "Foreldredyr, kjøttproduksjon" - same
+category, corrupted ø). Matching on the "Foreldredyr" prefix sidesteps the
+encoding issue entirely and translates straight to the English labels used in
+all figures.
+
+```{r clean driftsform}
+isolates <- isolates_raw %>%
+  mutate(
+    production_type = case_when(
+      str_starts(driftsformnavn, "Foreldredyr") ~ "Parent flock",
+      driftsformnavn == "Kjøttproduksjon" ~ "Broiler",
+      TRUE ~ NA_character_
+    ),
+    production_type = factor(production_type, levels = c("Broiler", "Parent flock")),
+    ST = as.character(.data[["mlst_scheme_list/sequence_type"]]),
+    Serotype = .data[["SeroTypeFinder/SeroType"]],
+    Year = as.integer(Year)
+  )
+
+stopifnot("production_type must be complete after recoding" = sum(is.na(isolates$production_type)) == 0)
+
+count(isolates, production_type)
+```
+
+# Cleaning: virulence genes (long format)
+
+Same parsing logic as `1_data_wrangling.qmd`: split the semicolon-free,
+comma-separated "Gene: Description" string into one row per isolate per gene,
+then de-duplicate (a gene can be listed more than once per isolate, e.g.
+multiple copies detected).
+
+```{r virulence genes long}
+core_genes <- c("hlyF", "iroN", "iss", "iucC", "iutA", "ompT")
+
+virulence_long <- isolates %>%
+  select(Sample, Year, production_type, ST, Serotype, tosplit = `Virulence_Finder/VirulenceGenes:ProteinName`) %>%
+  separate_longer_delim(tosplit, delim = ",") %>%
+  separate(tosplit, into = c("VF_gene_name", "VF_gene_description"), sep = ": ", fill = "right") %>%
+  mutate(across(c(VF_gene_name, VF_gene_description), str_trim)) %>%
+  distinct()
+
+# genes present in >= 1 isolate but excluded from the "variable virulence" figures
+# because they are core to ~all APEC isolates in this dataset
+virulence_long_variable <- virulence_long %>%
+  filter(!VF_gene_name %in% core_genes)
+
+n_distinct(virulence_long$VF_gene_name)
+n_distinct(virulence_long_variable$VF_gene_name)
+```
+
+# ST x Serotype combination table
+
+Clean counts of every observed ST x Serotype combination, isolate counts only
+(per Solveig/collaborator instruction - not per-animal). Exported in full so it
+can be reviewed and the >=10 threshold adjusted later without re-running R.
+
+```{r st serotype table}
+st_serotype_counts <- isolates %>%
+  count(ST, Serotype, name = "n_isolates") %>%
+  arrange(desc(n_isolates))
+
+dir.create(here::here("results", "tables"), showWarnings = FALSE, recursive = TRUE)
+write_csv(st_serotype_counts, here::here("results", "tables", "ST_serotype_combination_counts.csv"))
+
+st_serotype_counts %>% filter(n_isolates >= 10) %>% nrow()  # combinations shown in the main figure
+st_serotype_counts %>% filter(n_isolates < 10) %>% nrow()   # combinations pushed to appendix
 ```
 
 # Draft visualisations
@@ -43,3 +158,825 @@ sapply(fun_files_path, source, .GlobalEnv)
 Each section below is a candidate chart for discussion with collaborators.
 Save drafts with `save_apec_plot(p, "name.png", stage = "drafts")`
 (writes to `results/figures/drafts/`, gitignored).
+
+## Figure 1: Sampling timeline (isolates + insendelser per year, by production type)
+
+Covers must-haves #1 (year distribution / bias check), #2 (insendelser vs.
+isolates per year), #4 (broiler/parent distinction) and #5 (isolate-level
+counts) in one figure. Two panels avoid a dual y-axis: isolate counts and
+insendelse (sak) counts are not on the same scale, so they get separate panels
+with independent y-axes (`scales = "free_y"`) rather than being forced onto one.
+
+```{r figure1 data}
+timeline_data <- bind_rows(
+  isolates %>%
+    count(Year, production_type, name = "n") %>%
+    mutate(metric = "Isolates"),
+  isolates %>%
+    distinct(Year, sak, production_type) %>%
+    count(Year, production_type, name = "n") %>%
+    mutate(metric = "Insendelser (sak)")
+) %>%
+  mutate(metric = factor(metric, levels = c("Isolates", "Insendelser (sak)")))
+```
+
+**Proposal A - stacked bars, faceted by metric:**
+
+```{r figure1a}
+fig1a <- timeline_data %>%
+  ggplot(aes(x = Year, y = n, fill = production_type)) +
+  geom_col(color = "white", linewidth = 0.2) +
+  facet_wrap(~metric, ncol = 1, scales = "free_y") +
+  scale_x_continuous(breaks = 2018:2025) +
+  scale_fill_manual(values = palette_qual[1:2]) +
+  labs(
+    title = "APEC sampling, 2018–2025",
+    subtitle = "Isolate and submission (insendelse) counts per year, by production type",
+    x = NULL, y = "Count", fill = "Production type"
+  ) +
+  theme_apec()
+
+fig1a
+save_apec_plot(fig1a, "fig1a_timeline_stacked.png", stage = "drafts")
+```
+
+**Proposal B - dodged bars, same panels:**
+Dodged bars make it easier to compare broiler vs. parent flock magnitude
+directly within a year (stacking makes reading the *smaller* segment's exact
+height harder); the tradeoff is a slightly busier plot.
+
+```{r figure1b}
+fig1b <- timeline_data %>%
+  ggplot(aes(x = Year, y = n, fill = production_type)) +
+  geom_col(position = position_dodge2(preserve = "single"), color = "white", linewidth = 0.2) +
+  facet_wrap(~metric, ncol = 1, scales = "free_y") +
+  scale_x_continuous(breaks = 2018:2025) +
+  scale_fill_manual(values = palette_qual[1:2]) +
+  labs(
+    title = "APEC sampling, 2018–2025",
+    subtitle = "Isolate and submission (insendelse) counts per year, by production type",
+    x = NULL, y = "Count", fill = "Production type"
+  ) +
+  theme_apec()
+
+fig1b
+save_apec_plot(fig1b, "fig1b_timeline_dodged.png", stage = "drafts")
+```
+
+## Figure 2: ST x Serotype combinations (>=10 isolates), by production type
+
+Only the 17 combinations with >= 10 isolates are shown directly (the full
+117-combination tail is in `results/tables/ST_serotype_combination_counts.csv`
+for appendix use). Horizontal bars keep the "ST : Serotype" labels readable
+without rotated text; ordering by total count turns the ranking into the
+visual read.
+
+```{r figure2}
+combo_threshold <- 10
+
+top_combos <- isolates %>%
+  mutate(combo = paste(ST, Serotype, sep = " : ")) %>%
+  count(combo, name = "n_total") %>%
+  filter(n_total >= combo_threshold)
+
+fig2_data <- isolates %>%
+  mutate(combo = paste(ST, Serotype, sep = " : ")) %>%
+  filter(combo %in% top_combos$combo) %>%
+  count(combo, production_type, name = "n") %>%
+  left_join(top_combos, by = "combo") %>%
+  mutate(combo = fct_reorder(combo, n_total))
+
+fig2 <- fig2_data %>%
+  ggplot(aes(x = n, y = combo, fill = production_type)) +
+  geom_col(color = "white", linewidth = 0.2) +
+  scale_fill_manual(values = palette_qual[1:2]) +
+  labs(
+    title = "Most common ST × Serotype combinations",
+    subtitle = paste0("Combinations with ≥", combo_threshold, " isolates (", nrow(top_combos), " of ", nrow(st_serotype_counts), " total combinations shown)"),
+    x = "Number of isolates", y = NULL, fill = "Production type"
+  ) +
+  theme_apec() +
+  theme(panel.grid.major.y = element_blank())
+
+fig2
+save_apec_plot(fig2, "fig2_st_serotype_top.png", stage = "drafts")
+```
+
+## Figure 3: ST x Serotype combinations by year (heatmap)
+
+Addresses the "per-year distribution of the top ST x Serotype combinations,
+split by production type" ask. A heatmap is the right form here: two
+categorical axes (combo x year) with a magnitude (count) is exactly a
+"compare magnitude on a grid" job, and it scales far better than 17 x 8 x 2
+grouped bars would. Sequential single-hue fill (not categorical) because the
+job is magnitude, not identity. Cells are faceted by production type rather
+than color-coded by it, since color is already spent on count.
+
+```{r figure3}
+fig3_data <- isolates %>%
+  mutate(combo = paste(ST, Serotype, sep = " : ")) %>%
+  filter(combo %in% top_combos$combo) %>%
+  count(combo, Year, production_type, name = "n") %>%
+  complete(combo, Year, production_type, fill = list(n = 0)) %>%
+  left_join(top_combos, by = "combo") %>%
+  mutate(combo = fct_reorder(combo, n_total))
+
+fig3 <- fig3_data %>%
+  ggplot(aes(x = factor(Year), y = combo, fill = n)) +
+  geom_tile(color = "white", linewidth = 0.6) +
+  geom_text(aes(label = ifelse(n == 0, "", n)), size = 2.8, color = "grey20") +
+  facet_wrap(~production_type) +
+  scale_fill_gradient(low = "#f7f7f7", high = palette_qual[1], na.value = "white") +
+  labs(
+    title = "ST × Serotype combinations by year and production type",
+    subtitle = paste0("Combinations with ≥", combo_threshold, " isolates total; cell = isolate count"),
+    x = NULL, y = NULL, fill = "Isolates"
+  ) +
+  theme_apec() +
+  theme(panel.grid = element_blank(), legend.position = "right")
+
+fig3
+save_apec_plot(fig3, "fig3_st_serotype_by_year.png", stage = "drafts", width = 26, height = 16)
+```
+
+## Figure 3b: ST x Serotype flow, by production type (alluvial - alternative to the heatmap)
+
+Same underlying question as Figure 3 (how do production type, ST and Serotype
+relate for the common combinations), shown as flow instead of a grid. Each
+ribbon is a group of isolates; ribbon width = isolate count. This is a
+genuinely different read from the heatmap: it emphasizes *how much of each ST*
+routes to *which serotype* and *which production type*, at the cost of not
+showing year and getting cluttered past ~10-15 categories per axis - which is
+exactly why it's restricted to the same >=10-isolate combos as Figures 2-3.
+`ggalluvial` is a new dependency for this project (added to renv.lock).
+
+```{r figure3b alluvial data}
+alluvial_data <- isolates %>%
+  mutate(combo = paste(ST, Serotype, sep = " : ")) %>%
+  filter(combo %in% top_combos$combo) %>%
+  count(production_type, ST, Serotype, name = "n") %>%
+  # keep ST/Serotype ordered by overall frequency so the biggest flows sit together
+  left_join(isolates %>% count(ST, name = "n_ST"), by = "ST") %>%
+  left_join(isolates %>% count(Serotype, name = "n_Serotype"), by = "Serotype") %>%
+  mutate(
+    ST = fct_reorder(ST, n_ST, .desc = TRUE),
+    Serotype = fct_reorder(Serotype, n_Serotype, .desc = TRUE)
+  )
+```
+
+```{r figure3b}
+fig3b <- alluvial_data %>%
+  ggplot(aes(axis1 = production_type, axis2 = ST, axis3 = Serotype, y = n)) +
+  geom_alluvium(aes(fill = production_type), width = 1/4, alpha = 0.8) +
+  geom_stratum(width = 1/4, fill = "grey95", color = "grey40", linewidth = 0.3) +
+  geom_text(stat = "stratum", aes(label = after_stat(stratum)), size = 2.8) +
+  scale_x_discrete(limits = c("Production type", "ST", "Serotype"), expand = c(0.08, 0.08)) +
+  scale_fill_manual(values = palette_qual[1:2]) +
+  labs(
+    title = "ST × Serotype flow, by production type",
+    subtitle = paste0("Combinations with ≥", combo_threshold, " isolates total (year not shown - see Figure 3 heatmap for the yearly breakdown)"),
+    x = NULL, y = "Isolates", fill = "Production type"
+  ) +
+  theme_apec() +
+  theme(
+    panel.grid = element_blank(),
+    axis.text.y = element_blank(),
+    legend.position = "bottom"
+  )
+
+fig3b
+save_apec_plot(fig3b, "fig3b_st_serotype_alluvial.png", stage = "drafts", width = 24, height = 20)
+```
+
+## Figure 3c: ST x Serotype flow, faceted by year, with crossing-reduced axis order
+
+**Rejected (2026-07-30): labels too small to read, not usable for
+publication.** Kept for the record and in case the underlying small-multiples
+idea is worth revisiting at a larger size later; superseded for now by Figure
+3d (one year per page, same data, readable) for exploration/supplement use.
+
+Two changes from Figure 3b, both purely about *plotting order* - no data is
+added, removed, or recalculated:
+
+1. **Faceted by year** to bring back the temporal dimension the alluvial in
+   3b dropped.
+2. **Barycenter-ordered axes.** By default the ST and Serotype axes are
+   ordered by raw frequency, which is what made 3b's ST -> Serotype junction
+   tangled (a frequency-ordered ST next to a frequency-ordered Serotype has no
+   reason to line up). Instead, each ST is positioned by the weighted-average
+   position of the production types it flows from, and each Serotype is
+   positioned by the weighted-average position of the STs it flows from (the
+   standard barycenter/median heuristic used to reduce crossings in
+   Sankey-style diagrams). Same 17 combinations, same counts - only the left-
+   to-right order of the categories on the ST and Serotype axes changes.
+
+```{r figure3c ordering}
+production_order <- c("Broiler" = 1, "Parent flock" = 2)
+
+st_order <- alluvial_data %>%
+  mutate(prod_pos = production_order[as.character(production_type)]) %>%
+  group_by(ST) %>%
+  summarise(bary = weighted.mean(prod_pos, w = n), n_total = sum(n), .groups = "drop") %>%
+  arrange(bary, desc(n_total)) %>%
+  pull(ST) %>%
+  as.character()
+
+serotype_order <- alluvial_data %>%
+  mutate(st_pos = match(as.character(ST), st_order)) %>%
+  group_by(Serotype) %>%
+  summarise(bary = weighted.mean(st_pos, w = n), n_total = sum(n), .groups = "drop") %>%
+  arrange(bary, desc(n_total)) %>%
+  pull(Serotype) %>%
+  as.character()
+
+alluvial_data_ordered <- alluvial_data %>%
+  mutate(
+    ST = factor(as.character(ST), levels = st_order),
+    Serotype = factor(as.character(Serotype), levels = serotype_order)
+  )
+```
+
+```{r figure3c data}
+fig3c_data <- isolates %>%
+  mutate(combo = paste(ST, Serotype, sep = " : ")) %>%
+  filter(combo %in% top_combos$combo) %>%
+  count(Year, production_type, ST, Serotype, name = "n") %>%
+  mutate(
+    ST = factor(ST, levels = st_order),
+    Serotype = factor(Serotype, levels = serotype_order)
+  )
+```
+
+```{r figure3c}
+fig3c <- fig3c_data %>%
+  ggplot(aes(axis1 = production_type, axis2 = ST, axis3 = Serotype, y = n)) +
+  geom_alluvium(aes(fill = production_type), width = 1/4, alpha = 0.8) +
+  geom_stratum(width = 1/4, fill = "grey95", color = "grey40", linewidth = 0.2) +
+  scale_x_discrete(limits = c("Production type", "ST", "Serotype"), expand = c(0.1, 0.1)) +
+  scale_fill_manual(values = palette_qual[1:2]) +
+  facet_wrap(~Year, ncol = 4) +
+  labs(
+    title = "ST × Serotype flow, by production type and year",
+    subtitle = paste0("Combinations with ≥", combo_threshold, " isolates total; axes ordered to reduce ribbon crossing (see Figure 3b for labeled strata)"),
+    x = NULL, y = "Isolates", fill = "Production type"
+  ) +
+  theme_apec() +
+  theme(
+    panel.grid = element_blank(),
+    axis.text.y = element_blank(),
+    axis.text.x = element_text(size = 6),
+    legend.position = "bottom"
+  )
+
+fig3c
+save_apec_plot(fig3c, "fig3c_st_serotype_alluvial_by_year.png", stage = "drafts", width = 30, height = 22)
+```
+
+## Figure 3e: ST x Serotype flow, by production type (Figure 3b with crossing-reduced order)
+
+Same figure as 3b - same data, same axes, nothing recalculated - only the
+`ST`/`Serotype` factor levels are swapped for the barycenter order computed
+above (`alluvial_data_ordered`). Compare directly against 3b: the ST ->
+Serotype junction should read as mostly straight ribbons here instead of the
+crossing pattern in 3b.
+
+```{r figure3e}
+fig3e <- alluvial_data_ordered %>%
+  ggplot(aes(axis1 = production_type, axis2 = ST, axis3 = Serotype, y = n)) +
+  geom_alluvium(aes(fill = production_type), width = 1/4, alpha = 0.8) +
+  geom_stratum(width = 1/4, fill = "grey95", color = "grey40", linewidth = 0.3) +
+  geom_text(stat = "stratum", aes(label = after_stat(stratum)), size = 2.2) +
+  scale_x_discrete(limits = c("Production type", "ST", "Serotype"), expand = c(0.08, 0.08)) +
+  scale_fill_manual(values = palette_qual[1:2]) +
+  labs(
+    title = "ST × Serotype flow, by production type",
+    subtitle = paste0("Same as Figure 3b, axes reordered to reduce ribbon crossing (combinations with ≥", combo_threshold, " isolates total)"),
+    x = NULL, y = "Isolates", fill = "Production type"
+  ) +
+  theme_apec() +
+  theme(
+    panel.grid = element_blank(),
+    axis.text.y = element_blank(),
+    legend.position = "bottom"
+  )
+
+fig3e
+# taller than a default figure on purpose: the rarest strata (e.g. ST 5340 /
+# O112ac/O8/O8:H46, ~10 isolates) are too thin for their label at a normal
+# aspect ratio and the text collides with neighboring thin strata
+save_apec_plot(fig3e, "fig3e_st_serotype_alluvial_sorted.png", stage = "drafts", width = 22, height = 32)
+```
+
+## Figure 3d: ST x Serotype flow, one year per page
+
+Figure 3c's small multiples get cramped for the low-count years. This
+produces the same per-year alluvial, but one year per page, at full size, via
+`ggforce::facet_wrap_paginate()` - the tool for exactly this ("print facets on
+separate pages"). Output is a single multi-page PDF (open it and page through)
+plus one PNG per year for quick browsing without a PDF viewer. Free y-scale
+per page, since each page stands alone and readability of that single year
+matters more than cross-year magnitude comparison (Figure 3c/Figure 1 already
+cover the magnitude comparison).
+
+`ggforce` is a new dependency for this project (added to renv.lock).
+
+```{r figure3d setup}
+library(ggforce)
+
+fig3d_base <- fig3c_data %>%
+  ggplot(aes(axis1 = production_type, axis2 = ST, axis3 = Serotype, y = n)) +
+  geom_alluvium(aes(fill = production_type), width = 1/4, alpha = 0.8) +
+  geom_stratum(width = 1/4, fill = "grey95", color = "grey40", linewidth = 0.3) +
+  geom_text(stat = "stratum", aes(label = after_stat(stratum)), size = 2.3) +
+  scale_x_discrete(limits = c("Production type", "ST", "Serotype"), expand = c(0.08, 0.08)) +
+  scale_fill_manual(values = palette_qual[1:2]) +
+  labs(
+    title = "ST × Serotype flow, by production type",
+    subtitle = paste0("Combinations with ≥", combo_threshold, " isolates total"),
+    x = NULL, y = "Isolates", fill = "Production type"
+  ) +
+  theme_apec() +
+  theme(panel.grid = element_blank(), legend.position = "bottom")
+
+n_pg <- n_pages(fig3d_base + facet_wrap_paginate(~Year, ncol = 1, nrow = 1, scales = "free_y", page = 1))
+```
+
+```{r figure3d pdf}
+pdf_path <- here::here("results", "figures", "drafts", "fig3d_st_serotype_alluvial_by_year_pages.pdf")
+pdf(pdf_path, width = 11, height = 13, onefile = TRUE)
+for (p in seq_len(n_pg)) {
+  print(fig3d_base + facet_wrap_paginate(~Year, ncol = 1, nrow = 1, scales = "free_y", page = p))
+}
+invisible(dev.off())
+```
+
+```{r figure3d pngs}
+by_year_dir <- here::here("results", "figures", "drafts", "fig3d_by_year")
+dir.create(by_year_dir, showWarnings = FALSE, recursive = TRUE)
+
+for (yr in sort(unique(fig3c_data$Year))) {
+  p <- fig3d_base + filter(fig3c_data, Year == yr) +
+    labs(subtitle = paste0("Year ", yr, " - combinations with ≥", combo_threshold, " isolates total"))
+  ggsave(
+    filename = file.path(by_year_dir, paste0("fig3d_", yr, ".png")),
+    plot = p, width = 24, height = 30, units = "cm", dpi = 300
+  )
+}
+```
+
+## Figure 4: Serotype composition by production type (proportion, not raw count)
+
+Broiler (650 isolates) and Parent flock (234 isolates) group sizes differ a
+lot, so raw counts would make Broiler look more "diverse" by default. Showing
+% within each production type controls for that and answers the actual
+question: do the *proportions* of serotypes differ by production type. Capped
+to the serotypes reaching >=2% in at least one group; the rest are folded into
+"Other" rather than cycling more hues (there are 115 serotypes total - direct
+per-serotype color would break down long before that).
+
+```{r figure4}
+serotype_totals <- isolates %>% count(production_type, name = "n_group")
+
+serotype_share <- isolates %>%
+  count(production_type, Serotype, name = "n") %>%
+  left_join(serotype_totals, by = "production_type") %>%
+  mutate(pct = n / n_group * 100)
+
+serotypes_to_show <- serotype_share %>%
+  filter(pct >= 2) %>%
+  distinct(Serotype) %>%
+  pull(Serotype)
+
+fig4_data <- serotype_share %>%
+  mutate(Serotype = if_else(Serotype %in% serotypes_to_show, Serotype, "Other")) %>%
+  group_by(production_type, Serotype) %>%
+  summarise(pct = sum(pct), n = sum(n), .groups = "drop") %>%
+  mutate(Serotype = fct_reorder(Serotype, pct, .fun = max)) %>%
+  mutate(Serotype = fct_relevel(Serotype, "Other", after = 0))
+
+fig4 <- fig4_data %>%
+  ggplot(aes(x = pct, y = Serotype, fill = production_type)) +
+  geom_col(position = position_dodge2(preserve = "single"), color = "white", linewidth = 0.2) +
+  scale_fill_manual(values = palette_qual[1:2]) +
+  scale_x_continuous(labels = label_percent(scale = 1)) +
+  labs(
+    title = "Serotype composition, by production type",
+    subtitle = "% of isolates within each production type (controls for the 650 vs. 234 isolate group-size difference); serotypes <2% in both groups pooled as \"Other\"",
+    x = NULL, y = NULL, fill = "Production type"
+  ) +
+  theme_apec() +
+  theme(panel.grid.major.y = element_blank())
+
+fig4
+save_apec_plot(fig4, "fig4_serotype_share_by_production.png", stage = "drafts")
+```
+
+## Figure 5 (proposal_2): Variable virulence gene prevalence
+
+The 6 core genes (hlyF, iroN, iss, iucC, iutA, ompT) are excluded - they are
+near-ubiquitous in this dataset and would dominate/flatten the chart without
+adding information. This is a magnitude comparison across many categories
+(gene), so it gets a sequential single-hue ramp (not categorical) and is
+capped to genes present in >=5% of isolates - rarer genes go to the
+supplementary table rather than a 60+ row bar chart.
+
+```{r figure5}
+gene_prevalence <- virulence_long_variable %>%
+  distinct(Sample, production_type, VF_gene_name) %>%
+  count(VF_gene_name, name = "n_isolates") %>%
+  mutate(pct = n_isolates / n_distinct(isolates$Sample) * 100) %>%
+  arrange(desc(pct))
+
+dir.create(here::here("results", "tables"), showWarnings = FALSE, recursive = TRUE)
+write_csv(gene_prevalence, here::here("results", "tables", "variable_virulence_gene_prevalence.csv"))
+
+gene_prevalence_threshold <- 5  # % of isolates
+
+fig5_data <- gene_prevalence %>%
+  filter(pct >= gene_prevalence_threshold) %>%
+  mutate(VF_gene_name = fct_reorder(VF_gene_name, pct))
+
+fig5 <- fig5_data %>%
+  ggplot(aes(x = pct, y = VF_gene_name, fill = pct)) +
+  geom_col(color = "white", linewidth = 0.2) +
+  scale_fill_gradient(low = "#f7f7f7", high = palette_qual[1], guide = "none") +
+  scale_x_continuous(labels = label_percent(scale = 1)) +
+  labs(
+    title = "Prevalence of variable virulence genes",
+    subtitle = paste0(
+      "Core genes (hlyF, iroN, iss, iucC, iutA, ompT) excluded; genes present in <",
+      gene_prevalence_threshold, "% of isolates omitted (see results/tables/variable_virulence_gene_prevalence.csv)"
+    ),
+    x = "% of isolates (n = 884)", y = NULL
+  ) +
+  theme_apec()
+
+fig5
+save_apec_plot(fig5, "fig5_variable_virulence_prevalence.png", stage = "drafts", height = 20)
+```
+
+**Proposal: split by production type**, since the underlying question is
+usually "does virulence gene carriage differ between broiler and parent
+flocks" rather than the pooled prevalence alone.
+
+```{r figure5b}
+gene_prevalence_by_type <- virulence_long_variable %>%
+  distinct(Sample, production_type, VF_gene_name) %>%
+  count(production_type, VF_gene_name, name = "n_isolates") %>%
+  left_join(serotype_totals, by = "production_type") %>%
+  mutate(pct = n_isolates / n_group * 100)
+
+genes_to_show <- gene_prevalence %>% filter(pct >= gene_prevalence_threshold) %>% pull(VF_gene_name)
+
+fig5b_data <- gene_prevalence_by_type %>%
+  filter(VF_gene_name %in% genes_to_show) %>%
+  mutate(VF_gene_name = factor(VF_gene_name, levels = levels(fig5_data$VF_gene_name)))
+
+fig5b <- fig5b_data %>%
+  ggplot(aes(x = pct, y = VF_gene_name, fill = production_type)) +
+  geom_col(position = position_dodge2(preserve = "single"), color = "white", linewidth = 0.2) +
+  scale_fill_manual(values = palette_qual[1:2]) +
+  scale_x_continuous(labels = label_percent(scale = 1)) +
+  labs(
+    title = "Prevalence of variable virulence genes, by production type",
+    subtitle = "% within each production type (650 broiler, 234 parent flock isolates)",
+    x = NULL, y = NULL, fill = "Production type"
+  ) +
+  theme_apec()
+
+fig5b
+save_apec_plot(fig5b, "fig5b_variable_virulence_by_production.png", stage = "drafts", height = 20)
+```
+
+## Figure 6: Top 10 ST x Serotype combinations, per year, isolates + sent cases in one graph
+
+Different design goal from Figures 2/3/3b-e: instead of splitting "isolates
+per combo," "combo by year," and "insendelser per year" into separate
+figures, put isolate counts, production type and sent-case ("insendelse")
+counts on one graph per year, and stack the years as rows so they're directly
+comparable.
+
+- **x-axis**: the same 10 ST : Serotype combinations in every panel (the
+  overall top 10 by isolate count) - not the >=10-isolate set used in Figures
+  2/3, which was 17 combinations.
+- **Bar height** = isolate count, **stacked by production type** (Broiler /
+  Parent flock) so that split stays visible.
+- **Text above each bar** = number of sent cases (insendelser) for that
+  combination that year, labeled in English as requested.
+- **Facets = one column, one row per year, fixed x and y scales** (not
+  `free_y`) so bar heights are directly comparable across years - a
+  combination's bar in 2021 and its bar in 2019 are on the same scale.
+
+```{r figure6 data}
+top10_combos <- isolates %>%
+  mutate(combo = paste(ST, Serotype, sep = " : ")) %>%
+  count(combo, name = "n_total") %>%
+  slice_max(n_total, n = 10, with_ties = FALSE) %>%
+  arrange(desc(n_total))
+
+combo_levels_top10 <- top10_combos$combo
+
+fig6_isolates <- isolates %>%
+  mutate(combo = paste(ST, Serotype, sep = " : ")) %>%
+  filter(combo %in% combo_levels_top10) %>%
+  count(Year, combo, production_type, name = "n_isolates") %>%
+  complete(Year, combo = combo_levels_top10, production_type, fill = list(n_isolates = 0)) %>%
+  mutate(combo = factor(combo, levels = combo_levels_top10))
+
+fig6_sent_cases <- isolates %>%
+  mutate(combo = paste(ST, Serotype, sep = " : ")) %>%
+  filter(combo %in% combo_levels_top10) %>%
+  distinct(Year, combo, sak) %>%
+  count(Year, combo, name = "n_sent_cases") %>%
+  complete(Year, combo = combo_levels_top10, fill = list(n_sent_cases = 0))
+
+fig6_bar_totals <- fig6_isolates %>%
+  group_by(Year, combo) %>%
+  summarise(n_isolates_total = sum(n_isolates), .groups = "drop") %>%
+  left_join(fig6_sent_cases, by = c("Year", "combo")) %>%
+  mutate(combo = factor(combo, levels = combo_levels_top10))
+```
+
+```{r figure6}
+fig6 <- fig6_isolates %>%
+  ggplot(aes(x = combo, y = n_isolates, fill = production_type)) +
+  geom_col(color = "white", linewidth = 0.15) +
+  geom_text(
+    data = fig6_bar_totals,
+    aes(x = combo, y = n_isolates_total, label = paste0(n_sent_cases, " sent cases")),
+    inherit.aes = FALSE, vjust = -0.4, size = 2.2, color = "grey20"
+  ) +
+  facet_wrap(~Year, ncol = 1) +
+  scale_fill_manual(values = palette_qual[1:2]) +
+  scale_y_continuous(expand = expansion(mult = c(0, 0.2))) +
+  labs(
+    title = "Top 10 ST × Serotype combinations, by year",
+    subtitle = "Bars = isolate count, stacked by production type; label = number of sent cases (insendelser) that year",
+    x = "ST : Serotype", y = "Number of isolates", fill = "Production type"
+  ) +
+  theme_apec() +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1, size = 7),
+    panel.grid.major.x = element_blank()
+  )
+
+fig6
+save_apec_plot(fig6, "fig6_top10_st_serotype_by_year.png", stage = "drafts", width = 22, height = 42)
+```
+
+## Figure 6b: same as Figure 6, one year per page
+
+Same data, same fixed y-axis (computed globally so every page is comparable),
+one page/PNG per year for a closer look, following the same
+`facet_wrap_paginate` approach as Figure 3d.
+
+```{r figure6b}
+y_max_fig6 <- fig6_bar_totals %>%
+  mutate(y_top = n_isolates_total * 1.2) %>%
+  pull(y_top) %>%
+  max()
+
+# NOTE: geom_text() below is given its own `data =` (it must be, since labels
+# live at the bar-total level, not the per-production_type level of the main
+# aes()). That means `<plot> + filter(...)` does NOT filter this layer - it
+# only swaps the ggplot object's *default* data, and a layer with explicit
+# `data` ignores the default entirely. So each per-year page is built fresh
+# from year-filtered data for both layers, rather than reusing one base plot.
+make_fig6b_plot <- function(yr) {
+  fig6_isolates %>%
+    filter(Year == yr) %>%
+    ggplot(aes(x = combo, y = n_isolates, fill = production_type)) +
+    geom_col(color = "white", linewidth = 0.15) +
+    geom_text(
+      data = fig6_bar_totals %>% filter(Year == yr),
+      aes(x = combo, y = n_isolates_total, label = paste0(n_sent_cases, " sent cases")),
+      inherit.aes = FALSE, vjust = -0.4, size = 2.6, color = "grey20"
+    ) +
+    scale_fill_manual(values = palette_qual[1:2]) +
+    scale_y_continuous(limits = c(0, y_max_fig6), expand = expansion(mult = c(0, 0))) +
+    labs(
+      title = "Top 10 ST × Serotype combinations",
+      subtitle = paste0("Year ", yr),
+      x = "ST : Serotype", y = "Number of isolates", fill = "Production type"
+    ) +
+    theme_apec() +
+    theme(
+      axis.text.x = element_text(angle = 45, hjust = 1, size = 8),
+      panel.grid.major.x = element_blank()
+    )
+}
+
+by_year_dir_fig6 <- here::here("results", "figures", "drafts", "fig6b_by_year")
+dir.create(by_year_dir_fig6, showWarnings = FALSE, recursive = TRUE)
+
+for (yr in sort(unique(fig6_isolates$Year))) {
+  ggsave(
+    filename = file.path(by_year_dir_fig6, paste0("fig6b_", yr, ".png")),
+    plot = make_fig6b_plot(yr), width = 20, height = 14, units = "cm", dpi = 300
+  )
+}
+
+pdf_path_fig6 <- here::here("results", "figures", "drafts", "fig6b_top10_st_serotype_by_year_pages.pdf")
+pdf(pdf_path_fig6, width = 9, height = 6.5, onefile = TRUE)
+for (yr in sort(unique(fig6_isolates$Year))) {
+  print(make_fig6b_plot(yr))
+}
+invisible(dev.off())
+```
+
+## Figure 6c: Figure 6 with a mixed y-axis (shared scale + a highlighted outlier scale)
+
+Figure 6's single fixed y-axis (0-227, driven by 2021's ST23:O78:H4 = 189
+isolates) makes every other year's bars nearly invisible. Plain `free_y`
+facets would fix readability but silently make every panel a different scale
+- exactly the kind of chart that gets misread. The compromise: **one shared
+y-axis for every year except the outlier**, and the outlier year keeps its
+own taller axis but is visually marked (orange border/background + an
+explicit "different y-axis scale" note) so nobody compares bar heights
+across that boundary by eye. The outlier year is detected from the data
+(largest single-bar total vs. the second-largest), not hardcoded to 2021, so
+this keeps working if the underlying data changes.
+
+`facet_wrap()` can't express "shared scale for most panels, separate scale
+for one panel," so this stacks one ggplot per year with `patchwork` (new
+dependency, added to renv.lock) instead - which also means x-axis labels
+only need to be drawn once, on the bottom panel, since every panel shares the
+same 10 combinations on the x-axis.
+
+```{r figure6c}
+library(patchwork)
+
+panel_max_by_year <- fig6_bar_totals %>%
+  group_by(Year) %>%
+  summarise(panel_max = max(n_isolates_total), .groups = "drop") %>%
+  arrange(desc(panel_max))
+
+outlier_year <- panel_max_by_year$Year[1]
+common_y_cap <- panel_max_by_year$panel_max[2] * 1.15
+outlier_y_cap <- panel_max_by_year$panel_max[1] * 1.15
+
+make_fig6c_panel <- function(yr, show_x_labels = FALSE) {
+  is_outlier <- yr == outlier_year
+  y_cap <- if (is_outlier) outlier_y_cap else common_y_cap
+
+  p <- fig6_isolates %>%
+    filter(Year == yr) %>%
+    ggplot(aes(x = combo, y = n_isolates, fill = production_type)) +
+    geom_col(color = "white", linewidth = 0.15) +
+    geom_text(
+      data = fig6_bar_totals %>% filter(Year == yr),
+      aes(x = combo, y = n_isolates_total, label = paste0(n_isolates_total, " (", n_sent_cases, " sent cases)")),
+      inherit.aes = FALSE, vjust = -0.4, size = 2.3, color = "grey20"
+    ) +
+    scale_fill_manual(values = palette_qual[1:2]) +
+    scale_y_continuous(limits = c(0, y_cap), expand = expansion(mult = c(0, 0.06))) +
+    labs(
+      x = NULL, y = NULL, fill = "Production type",
+      subtitle = if (is_outlier) {
+        paste0(yr, "  ⚠ different y-axis scale (0-", round(y_cap), " vs. 0-", round(common_y_cap), " for all other years)")
+      } else {
+        as.character(yr)
+      }
+    ) +
+    theme_apec() +
+    theme(
+      panel.grid.major.x = element_blank(),
+      plot.subtitle = element_text(
+        size = 9,
+        face = if (is_outlier) "bold" else "plain",
+        color = if (is_outlier) "#B45309" else "grey30"
+      ),
+      axis.text.x = if (show_x_labels) element_text(angle = 45, hjust = 1, size = 8) else element_blank(),
+      axis.ticks.x = if (show_x_labels) element_line(color = "grey60") else element_blank()
+    )
+
+  if (is_outlier) {
+    p <- p + theme(
+      panel.background = element_rect(fill = "#FFF3E0", color = "#B45309", linewidth = 0.9),
+      plot.background = element_rect(color = "#B45309", linewidth = 0.9)
+    )
+  }
+  p
+}
+
+years_sorted_fig6 <- sort(unique(fig6_isolates$Year))
+fig6c_panels <- purrr::map(
+  years_sorted_fig6,
+  ~ make_fig6c_panel(.x, show_x_labels = (.x == max(years_sorted_fig6)))
+)
+
+fig6c <- wrap_plots(fig6c_panels, ncol = 1) +
+  plot_layout(guides = "collect") +
+  plot_annotation(
+    title = "Top 10 ST × Serotype combinations, by year",
+    subtitle = "Bars = isolate count, stacked by production type; label = total isolates (sent cases). Shared y-axis across years, EXCEPT the highlighted outlier year, which is not comparable to the others by bar height.",
+    theme = theme_apec()
+  ) &
+  theme(legend.position = "bottom")
+
+fig6c
+save_apec_plot(fig6c, "fig6c_top10_st_serotype_mixed_scale.png", stage = "drafts", width = 22, height = 40)
+```
+
+## Figure 8: ST x Serotype flow, by year (Year as an alluvial axis)
+
+**Rejected (2026-07-30): kept for the record, not proposed to collaborators.**
+Year has 8 categories, each connecting to 8-13 different STs - a dense
+many-to-many bipartite graph. The barycenter ordering that cleaned up
+Figures 3e/3b (which only had to sort against 2 production-type categories)
+cannot untangle this; it is close to a worst case for crossing minimization,
+not a rendering bug to fix. Figure 8b (faceting by production type instead
+of coloring by it) does not fix the underlying tangle either, and
+additionally compresses the smaller Parent flock facet under a shared
+y-axis. If this is ever revisited, it would need a much smaller x-axis (e.g.
+top 3-4 STs only) to have any chance of reading cleanly - noted here so we
+don't have to rediscover that by rebuilding it.
+
+```{r figure8 data}
+alluvial_year_data <- isolates %>%
+  mutate(combo = paste(ST, Serotype, sep = " : ")) %>%
+  filter(combo %in% top_combos$combo) %>%
+  count(Year, ST, Serotype, production_type, name = "n")
+
+year_order <- as.character(sort(unique(alluvial_year_data$Year)))
+
+st_order_yr <- alluvial_year_data %>%
+  mutate(year_pos = match(as.character(Year), year_order)) %>%
+  group_by(ST) %>%
+  summarise(bary = weighted.mean(year_pos, w = n), n_total = sum(n), .groups = "drop") %>%
+  arrange(bary, desc(n_total)) %>%
+  pull(ST) %>%
+  as.character()
+
+serotype_order_yr <- alluvial_year_data %>%
+  mutate(st_pos = match(as.character(ST), st_order_yr)) %>%
+  group_by(Serotype) %>%
+  summarise(bary = weighted.mean(st_pos, w = n), n_total = sum(n), .groups = "drop") %>%
+  arrange(bary, desc(n_total)) %>%
+  pull(Serotype) %>%
+  as.character()
+
+alluvial_year_data <- alluvial_year_data %>%
+  mutate(
+    Year_f = factor(as.character(Year), levels = year_order),
+    ST = factor(ST, levels = st_order_yr),
+    Serotype = factor(Serotype, levels = serotype_order_yr)
+  )
+```
+
+```{r figure8}
+fig8 <- alluvial_year_data %>%
+  ggplot(aes(axis1 = Year_f, axis2 = ST, axis3 = Serotype, y = n)) +
+  geom_alluvium(aes(fill = production_type), width = 1/5, alpha = 0.8) +
+  geom_stratum(width = 1/5, fill = "grey95", color = "grey40", linewidth = 0.25) +
+  geom_text(stat = "stratum", aes(label = after_stat(stratum)), size = 2.0) +
+  scale_x_discrete(limits = c("Year", "ST", "Serotype"), expand = c(0.08, 0.08)) +
+  scale_fill_manual(values = palette_qual[1:2]) +
+  labs(
+    title = "ST × Serotype flow, by year",
+    subtitle = paste0("Combinations with ≥", combo_threshold, " isolates total; color = production type; axes ordered to reduce crossing"),
+    x = NULL, y = "Isolates", fill = "Production type"
+  ) +
+  theme_apec() +
+  theme(panel.grid = element_blank(), axis.text.y = element_blank(), legend.position = "bottom")
+
+fig8
+save_apec_plot(fig8, "fig8_year_st_serotype_alluvial.png", stage = "drafts", width = 30, height = 22)
+```
+
+## Figure 8b: same axes as Figure 8, faceted by production type instead of colored
+
+**Rejected (2026-07-30), same reasons as Figure 8** - the Year → ST tangle
+persists within each facet, and the shared y-axis compresses the Parent
+flock panel.
+
+```{r figure8b}
+alluvial_facet_data <- isolates %>%
+  mutate(combo = paste(ST, Serotype, sep = " : ")) %>%
+  filter(combo %in% top_combos$combo) %>%
+  count(production_type, Year, ST, Serotype, name = "n") %>%
+  mutate(
+    Year_f = factor(as.character(Year), levels = year_order),
+    ST = factor(ST, levels = st_order_yr),
+    Serotype = factor(Serotype, levels = serotype_order_yr)
+  )
+
+fig8b <- alluvial_facet_data %>%
+  ggplot(aes(axis1 = Year_f, axis2 = ST, axis3 = Serotype, y = n)) +
+  geom_alluvium(aes(fill = production_type), width = 1/5, alpha = 0.8) +
+  geom_stratum(width = 1/5, fill = "grey95", color = "grey40", linewidth = 0.2) +
+  geom_text(stat = "stratum", aes(label = after_stat(stratum)), size = 1.8) +
+  scale_x_discrete(limits = c("Year", "ST", "Serotype"), expand = c(0.1, 0.1)) +
+  scale_fill_manual(values = palette_qual[1:2]) +
+  facet_wrap(~production_type, ncol = 1) +
+  labs(
+    title = "ST × Serotype flow, by year, faceted by production type",
+    subtitle = paste0("Combinations with ≥", combo_threshold, " isolates total; same axis order as Figure 8"),
+    x = NULL, y = "Isolates", fill = "Production type"
+  ) +
+  theme_apec() +
+  theme(panel.grid = element_blank(), axis.text.y = element_blank(), legend.position = "none")
+
+fig8b
+save_apec_plot(fig8b, "fig8b_year_st_serotype_alluvial_facet_production.png", stage = "drafts", width = 30, height = 30)
+```

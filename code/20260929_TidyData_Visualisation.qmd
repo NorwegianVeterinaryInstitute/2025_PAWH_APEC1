@@ -1,0 +1,583 @@
+---
+title: "Tidy data verification & visualisation trials"
+author: "Eve Zeyl Fiskebeck"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+params:
+    results_xlsx: "results/Results_130226_SSM.xlsx"
+    isolate_sheet: "APEC_driftsformsjekk_120226 (2)"
+    source_code: 'code/R'
+    source_viz: 'code/R/viz'
+    output_dir: "results/202609_data_output"
+    figures_dir: "results/figures/202609_draft"
+execute:
+  echo: false
+  cache: false
+format: html
+knitr:
+  opts_chunk:
+    collapse: true
+    comment: "#>"
+editor_options:
+  chunk_output_type: console
+---
+<!--
+Requested in notes/20260929_updates_requested.md, scoped against the goals in notes/20260730_Distribution_visualisation.md.
+
+Source of truth for the raw import: results/Results_130226_SSM.xlsx, sheet "APEC_driftsformsjekk_120226 (2)" - same per-isolate table used in
+2_visualisation.qmd, so counts stay consistent across documents.
+-->
+
+Disclaimer: This quarto document - and code has been written by Antrhopic Claude Sonnet - and has been edited and verified by Eve Fiskebeck.
+
+# Setup
+```{r setup}
+library(here)
+library(tidyverse)
+library(readxl)
+library(writexl)
+library(scales)
+library(ggalluvial)
+```
+
+`quarto render` (or the Render button) populates `params` from the YAML header
+automatically before the first chunk runs. Running chunks one-by-one in
+Positron/VS Code/RStudio does not - there is no render step, so `params` never
+gets created and every `params$...` reference below fails with "object
+'params' not found". The fix is the same one used in
+`1_data_wrangling.qmd`, tightened with an `exists()` guard so it only ever
+fills the gap for interactive use and never overwrites the real, possibly
+overridden, params from an actual render.
+
+```{r params for interactive sessions}
+if (!exists("params")) {
+  params <- list(
+    results_xlsx = "results/Results_130226_SSM.xlsx",
+    isolate_sheet = "APEC_driftsformsjekk_120226 (2)",
+    source_code = "code/R",
+    source_viz = "code/R/viz",
+    output_dir = "results/202609_data_output",
+    figures_dir = "results/figures/202609_draft"
+  )
+}
+```
+
+```{r source reused functions}
+fun_files_path <- c(
+  list.files(here::here(params$source_code), pattern = "*.R$", full.names = TRUE),
+  list.files(here::here(params$source_viz), pattern = "*.R$", full.names = TRUE)
+)
+sapply(fun_files_path, source, .GlobalEnv)
+```
+
+`save_draft_plot()` - a local ggsave wrapper pointed at `params$figures_dir`
+instead of the fixed `results/figures/drafts|final` path `save_apec_plot()`
+(`code/R/viz/theme_apec.R`) uses for `2_visualisation.qmd` - now lives in its
+own file, `code/R/save_draft_plot.R`, and is picked up by the "source reused
+functions" chunk above like every other helper.
+
+```{r output dirs}
+if (!dir.exists(here::here(params$output_dir))) {
+  dir.create(here::here(params$output_dir), recursive = TRUE)
+}
+if (!dir.exists(here::here(params$figures_dir))) {
+  dir.create(here::here(params$figures_dir), recursive = TRUE)
+}
+```
+
+# Part 1: Data verification & tidy data
+
+## 1.1 Data import
+
+```{r load data}
+isolates_raw <- read_excel(
+  here::here(params$results_xlsx),
+  sheet = params$isolate_sheet
+)
+```
+
+## 1.2 Completeness checks
+
+Same checks as `2_visualisation.qmd`: one row per isolate, and the fields every
+downstream figure depends on (year, ST, serotype, production type) must be
+complete.
+
+```{r qc checks}
+qc <- list(
+  n_rows = nrow(isolates_raw),
+  n_distinct_sample = n_distinct(isolates_raw$Sample),
+  n_missing_year = sum(is.na(isolates_raw$Year)),
+  n_missing_ST = sum(is.na(isolates_raw[["mlst_scheme_list/sequence_type"]])),
+  n_missing_serotype = sum(is.na(isolates_raw[["SeroTypeFinder/SeroType"]])),
+  n_missing_driftsform = sum(is.na(isolates_raw$driftsformnavn))
+)
+qc
+
+stopifnot(
+  "one row per isolate expected" = qc$n_rows == qc$n_distinct_sample,
+  "Year must be complete" = qc$n_missing_year == 0,
+  "ST must be complete" = qc$n_missing_ST == 0,
+  "Serotype must be complete" = qc$n_missing_serotype == 0,
+  "driftsformnavn must be complete" = qc$n_missing_driftsform == 0
+)
+```
+
+## 1.3 Category spelling / homogeneity check
+
+`check_spelling_homogeneity()` (`code/R/check_spelling_homogeneity.R`) flags pairs of
+values in a column that are identical after trimming/casefolding
+("case_or_whitespace" - safe to auto-fix) or within a small edit distance
+("possible_typo" - needs a human read).
+
+Different tolerance per column type, deliberately:
+
+- `driftsformnavn`, `artnavn` are free-text-ish controlled vocabulary -
+  a 1-2 character difference there is almost always a typo/encoding artifact,
+  so these use the default `max_dist = 2`.
+- `ST` and `Serotype` are structured nomenclature codes where a 1-character
+  difference is usually a genuinely different real code (`O1:H4` vs. `O1:H7`
+  are different antigens, not a typo of each other) - fuzzy-matching these
+  produces mostly false positives, so they're checked at `max_dist = 0`
+  (case/whitespace collisions only).
+
+```{r spelling checks}
+spelling_flags <- bind_rows(
+  check_spelling_homogeneity(isolates_raw$driftsformnavn, max_dist = 2) %>% mutate(column = "driftsformnavn"),
+  check_spelling_homogeneity(isolates_raw$artnavn, max_dist = 2) %>% mutate(column = "artnavn"),
+  check_spelling_homogeneity(as.character(isolates_raw[["mlst_scheme_list/sequence_type"]]), max_dist = 0) %>% mutate(column = "ST"),
+  check_spelling_homogeneity(isolates_raw[["SeroTypeFinder/SeroType"]], max_dist = 0) %>% mutate(column = "Serotype")
+) %>%
+  relocate(column)
+
+spelling_flags
+
+write_csv(spelling_flags, file.path(here::here(params$output_dir), "spelling_flags.csv"))
+```
+
+Findings from this pass (fixed below):
+
+- `driftsformnavn`: confirms the known mojibake artifact - "Foreldredyr,
+  kjøttproduksjon" vs. "Foreldredyr, kj�ttproduksjon" (2 rows, corrupted
+  ø). `2_visualisation.qmd` sidesteps this downstream by matching on the
+  "Foreldredyr" prefix; here the value itself is corrected so the *exported*
+  verified data is clean, not just the derived column.
+- `artnavn`: "Rowan ranger" vs. "Rowan Ranger" is a genuine case duplicate (not
+  a distinct breed) - normalized to "Rowan Ranger". The other near-neighbours
+  (Ross 308 / Rowan 308 / Ross rowan / Ross) are real, distinct breed/trade
+  names and are correctly *not* flagged at `max_dist = 2`.
+- `ST` / `Serotype`: nothing flagged - no case/whitespace duplicates in either
+  column.
+
+```{r fix flagged values}
+isolates_fixed <- isolates_raw %>%
+  mutate(
+    driftsformnavn = if_else(
+      driftsformnavn == "Foreldredyr, kj�ttproduksjon",
+      "Foreldredyr, kjøttproduksjon",
+      driftsformnavn
+    ),
+    artnavn = if_else(artnavn == "Rowan ranger", "Rowan Ranger", artnavn)
+  )
+```
+
+## 1.4 Cleaning: production type (broiler / parent flock)
+
+Same recoding as `2_visualisation.qmd`, now applied to the already-fixed
+`driftsformnavn`.
+
+```{r clean driftsform}
+isolates <- isolates_fixed %>%
+  mutate(
+    production_type = case_when(
+      str_starts(driftsformnavn, "Foreldredyr") ~ "Parent flock",
+      driftsformnavn == "Kjøttproduksjon" ~ "Broiler",
+      TRUE ~ NA_character_
+    ),
+    production_type = factor(production_type, levels = c("Broiler", "Parent flock")),
+    ST = as.character(.data[["mlst_scheme_list/sequence_type"]]),
+    Serotype = .data[["SeroTypeFinder/SeroType"]],
+    Year = as.integer(Year)
+  )
+
+stopifnot("production_type must be complete after recoding" = sum(is.na(isolates$production_type)) == 0)
+
+count(isolates, production_type)
+```
+
+## 1.5 New variable: `variant` (ST-Serotype combination)
+
+Requested format: `ST23-O78:H4`.
+
+```{r variant column}
+isolates <- isolates %>%
+  mutate(variant = paste0("ST", ST, "-", Serotype))
+
+n_distinct(isolates$variant)  # 134 distinct ST-Serotype combinations observed
+head(count(isolates, variant, sort = TRUE), 5)
+```
+
+## 1.6 Grouping for figures: top-5 + "Other" (three strategies)
+
+The notes flag an open question for Figure 8: *"ST and serotype as top five,
+or only ST as top five?"* - i.e. should ST and Serotype be bucketed to their
+top 5 separately, or is there a third option of bucketing the combined
+`variant` directly? All three are built here as reusable columns
+(`top_n_other()` in `code/R/grouping_helpers.R`) so the comparison below has
+real numbers instead of guesswork, and Figure 8's three examples can each pick
+whichever fits.
+
+```{r grouped columns}
+isolates <- isolates %>%
+  mutate(
+    ST_top5 = top_n_other(ST, 5, other_label = "Other"),
+    ST_top5_label = if_else(ST_top5 == "Other", "Other ST", paste0("ST", ST_top5)),
+    Serotype_top5 = top_n_other(Serotype, 5, other_label = "Other Serotype"),
+    variant_top5 = top_n_other(variant, 5, other_label = "Other")
+  )
+```
+
+```{r grouping comparison}
+grouping_comparison <- tibble(
+  strategy = c(
+    "A: ST top5+Other, Serotype unrestricted",
+    "B: ST top5+Other x Serotype top5+Other (crossed)",
+    "C: variant (ST-Serotype) top5+Other, direct"
+  ),
+  n_categories_or_strata = c(
+    isolates %>% distinct(ST_top5_label, Serotype) %>% nrow(),
+    isolates %>% distinct(ST_top5_label, Serotype_top5) %>% nrow(),
+    n_distinct(isolates$variant_top5)
+  ),
+  n_isolates_in_largest_other_bucket = c(
+    sum(isolates$ST_top5 == "Other"),
+    isolates %>% filter(ST_top5 == "Other", Serotype_top5 == "Other Serotype") %>% nrow(),
+    sum(isolates$variant_top5 == "Other")
+  )
+) %>%
+  mutate(pct_in_that_bucket = round(100 * n_isolates_in_largest_other_bucket / nrow(isolates), 1))
+
+grouping_comparison
+```
+
+Reading this: **A** barely reduces visual complexity (122 of 134 combinations
+survive, because Serotype - the wider axis at 115 levels - stays unrestricted)
+and buries 43% of isolates in an ST-only "Other". **B** gets to a genuinely
+readable 13 strata but its Other×Other cell alone hides 34% of isolates with
+no ST or Serotype identity left. **C** is the most compact (6 categories) but
+hides the most isolates (53%) - because it only credits a combination that
+makes the *joint* top 5, not a common ST or common Serotype on their own.
+There's no free lunch here; Figure 8's three examples below use A, C and A
+again respectively (per the notes), so this table is the reference for judging
+what each one is trading away.
+
+## 1.7 Contingency tables + top 5 (ST, Serotype, variant)
+
+```{r contingency tables}
+st_contingency <- isolates %>%
+  count(ST, name = "n_isolates") %>%
+  arrange(desc(n_isolates)) %>%
+  mutate(is_top5 = ST %in% (isolates %>% count(ST, sort = TRUE) %>% slice_max(n, n = 5, with_ties = FALSE) %>% pull(ST)))
+
+serotype_contingency <- isolates %>%
+  count(Serotype, name = "n_isolates") %>%
+  arrange(desc(n_isolates)) %>%
+  mutate(is_top5 = Serotype %in% (isolates %>% count(Serotype, sort = TRUE) %>% slice_max(n, n = 5, with_ties = FALSE) %>% pull(Serotype)))
+
+variant_contingency <- isolates %>%
+  count(variant, ST, Serotype, name = "n_isolates") %>%
+  arrange(desc(n_isolates)) %>%
+  mutate(is_top5 = variant %in% (isolates %>% count(variant, sort = TRUE) %>% slice_max(n, n = 5, with_ties = FALSE) %>% pull(variant)))
+
+# full ST x Serotype contingency matrix (wide) - the "proper" contingency table
+st_serotype_wide <- isolates %>%
+  count(ST, Serotype, name = "n") %>%
+  pivot_wider(names_from = Serotype, values_from = n, values_fill = 0)
+
+top5_ST <- st_contingency %>% filter(is_top5)
+top5_Serotype <- serotype_contingency %>% filter(is_top5)
+top5_variant <- variant_contingency %>% filter(is_top5)
+```
+
+```{r export contingency tables}
+contingency_tables <- list(
+  ST = st_contingency,
+  Serotype = serotype_contingency,
+  Variant = variant_contingency,
+  ST_x_Serotype_wide = st_serotype_wide,
+  Top5_ST = top5_ST,
+  Top5_Serotype = top5_Serotype,
+  Top5_Variant = top5_variant,
+  grouping_comparison = grouping_comparison
+)
+
+saveRDS(contingency_tables, file.path(here::here(params$output_dir), "contingency_tables.rds"))
+write_xlsx(contingency_tables, file.path(here::here(params$output_dir), "contingency_tables.xlsx"))
+```
+
+## 1.8 Export the verified, tidy per-isolate dataset
+
+One row per isolate, spelling-corrected, with `production_type`, `variant` and
+the three top-5 grouping columns attached - the base table for Part 2 and for
+any later figure.
+
+```{r export tidy isolates}
+isolates_tidy <- isolates %>%
+  select(
+    Sample, Year, sak, produsentnr, production_type, driftsformnavn, artnavn,
+    ST, Serotype, variant, ST_top5, ST_top5_label, Serotype_top5, variant_top5
+  )
+
+saveRDS(isolates_tidy, file.path(here::here(params$output_dir), "isolates_tidy.rds"))
+write_xlsx(isolates_tidy, file.path(here::here(params$output_dir), "isolates_tidy.xlsx"))
+
+nrow(isolates_tidy)
+```
+
+# Part 2: Graph trials (draft, on verified data)
+
+Both requested chart families - collaborators "like both sankey and pie chart
+plots" - are drafted below: Figure 8's alluvial diagrams *are* Sankey-style
+flow charts (`ggalluvial`), and Figure 7 is the sized-bubble chart described in
+the notes.
+
+## Figure 7: variant composition (sized-bubble "pie" chart)
+
+No prior Figure 7 code exists in this repo (not in `2_visualisation.qmd` or
+its history) - this is a fresh build from the description in the notes, not an
+edit of something pre-existing, so treat the chart form itself as a proposal
+to confirm.
+
+Reading of the brief: "size of the circles ... proportional to isolate count",
+plus an *x-axis* with labels needing rotation, means this isn't a literal
+radial pie (no x-axis on a pie) but a proportional-bubble chart - circle area
+(not radius) encodes isolate count, which is the honest way to encode
+magnitude by size (`scale_size_area`). Per the notes:
+
+- On-chart label is the variant text only (`ST23-O78:H4`) - no isolate/case
+  counts drawn on the plot.
+- Counts and sent-case (insendelse) numbers go to a supplementary table
+  instead (`fig7_variant_supplementary.xlsx`).
+- Legend moved to the right, with its own line explaining what circle size
+  means.
+- x-axis labels rotated near-vertical.
+- Kept the broiler/parent distinction (a must-have per the goals note) as the
+  y-position/color of each bubble rather than dropping to a single row of
+  circles - open to dropping this if that's not what was meant.
+
+Top 10 variants by isolate count (not the top5+Other bucketing from Part 1 -
+diluting distinct top combinations into one "Other" bubble would defeat a
+chart whose whole point is to name the common ones); the rest are exactly what
+the supplementary table is for.
+
+```{r figure7 data}
+fig7_top_n <- 10
+
+fig7_top_variants <- isolates %>%
+  count(variant, name = "n_total") %>%
+  slice_max(n_total, n = fig7_top_n, with_ties = FALSE) %>%
+  arrange(desc(n_total)) %>%
+  pull(variant)
+
+fig7_data <- isolates %>%
+  filter(variant %in% fig7_top_variants) %>%
+  count(variant, production_type, name = "n_isolates") %>%
+  mutate(variant = factor(variant, levels = rev(fig7_top_variants)))
+```
+
+```{r figure7 supplementary}
+fig7_supplementary <- isolates %>%
+  mutate(shown_in_fig7 = variant %in% fig7_top_variants) %>%
+  group_by(variant, ST, Serotype) %>%
+  summarise(
+    n_isolates = n(),
+    n_sent_cases = n_distinct(sak),
+    shown_in_fig7 = first(shown_in_fig7),
+    .groups = "drop"
+  ) %>%
+  arrange(desc(n_isolates))
+
+write_xlsx(fig7_supplementary, file.path(here::here(params$output_dir), "fig7_variant_supplementary.xlsx"))
+```
+
+```{r figure7}
+fig7 <- fig7_data %>%
+  ggplot(aes(x = variant, y = production_type, size = n_isolates, color = production_type)) +
+  geom_point(alpha = 0.75) +
+  geom_text(aes(label = variant), size = 2.4, color = "grey15", vjust = -1.6, show.legend = FALSE) +
+  scale_size_area(max_size = 22, breaks = c(10, 25, 50, 100, 200)) +
+  scale_color_manual(values = palette_qual[1:2], guide = "none") +
+  labs(
+    title = "Most common ST × Serotype variants",
+    subtitle = paste0("Top ", fig7_top_n, " variants by isolate count; counts and sent cases in the supplementary table, not on the chart"),
+    x = NULL, y = NULL,
+    size = "Isolates (n)\ncircle area ∝ count"
+  ) +
+  theme_apec() +
+  theme(
+    legend.position = "right",
+    axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5),
+    axis.text.y = element_text(face = "bold"),
+    panel.grid.major.x = element_blank()
+  )
+
+fig7
+save_draft_plot(fig7, "fig7_variant_bubble.png", width = 26, height = 12)
+```
+
+## Figure 8: three ST × Serotype flow examples (Sankey/alluvial)
+
+Same three axis layouts as the notes, each reusing the `geom_alluvium` /
+`geom_stratum` pattern already established in `2_visualisation.qmd` (Figures
+3b-3e, 8, 8b), but grouping to top-5 + "Other" instead of *filtering* to a
+count threshold - so, unlike the old Figure 8, every isolate is still
+represented somewhere (in a named stratum or in "Other"), none are dropped.
+
+### Example 1: Year → ST (top 5 + Other) → Serotype (unrestricted)
+
+Same three axes as the old (rejected) Figure 8, with the one change requested:
+ST bucketed to its top 5 + "Other ST". Flagged risk, from the grouping
+comparison above: Serotype is *not* bucketed here, so this axis still carries
+~115 levels - the old Figure 8 was rejected for exactly this kind of tangle,
+so treat this as the literal example requested rather than an expected win.
+
+```{r figure8 example1 data}
+ex1_data <- isolates %>%
+  count(Year, ST_top5_label, Serotype, production_type, name = "n")
+
+ex1_year_order <- as.character(sort(unique(ex1_data$Year)))
+
+ex1_st_order <- ex1_data %>%
+  mutate(year_pos = match(as.character(Year), ex1_year_order)) %>%
+  group_by(ST_top5_label) %>%
+  summarise(bary = weighted.mean(year_pos, w = n), n_total = sum(n), .groups = "drop") %>%
+  arrange(bary, desc(n_total)) %>%
+  pull(ST_top5_label)
+
+ex1_serotype_order <- ex1_data %>%
+  mutate(st_pos = match(ST_top5_label, ex1_st_order)) %>%
+  group_by(Serotype) %>%
+  summarise(bary = weighted.mean(st_pos, w = n), n_total = sum(n), .groups = "drop") %>%
+  arrange(bary, desc(n_total)) %>%
+  pull(Serotype)
+
+ex1_data <- ex1_data %>%
+  mutate(
+    Year_f = factor(as.character(Year), levels = ex1_year_order),
+    ST_top5_label = factor(ST_top5_label, levels = ex1_st_order),
+    Serotype = factor(Serotype, levels = ex1_serotype_order)
+  )
+```
+
+```{r figure8 example1}
+fig8_ex1 <- ex1_data %>%
+  ggplot(aes(axis1 = Year_f, axis2 = ST_top5_label, axis3 = Serotype, y = n)) +
+  geom_alluvium(aes(fill = production_type), width = 1/5, alpha = 0.8) +
+  geom_stratum(width = 1/5, fill = "grey95", color = "grey40", linewidth = 0.25) +
+  geom_text(stat = "stratum", aes(label = after_stat(stratum)), size = 1.8) +
+  scale_x_discrete(limits = c("Year", "ST", "Serotype"), expand = c(0.08, 0.08)) +
+  scale_fill_manual(values = palette_qual[1:2]) +
+  labs(
+    title = "Example 1: Year × ST (top 5 + Other) × Serotype",
+    subtitle = "ST bucketed to top 5 + \"Other ST\"; Serotype not bucketed (~115 levels) - compare against Examples 2/3",
+    x = NULL, y = "Isolates", fill = "Production type"
+  ) +
+  theme_apec() +
+  theme(panel.grid = element_blank(), axis.text.y = element_blank(), legend.position = "bottom")
+
+fig8_ex1
+save_draft_plot(fig8_ex1, "fig8_example1_year_st5_serotype.png", width = 32, height = 26)
+```
+
+### Example 2: Production type → Year → variant (top 5 + Other, kept)
+
+Combined `variant` axis instead of separate ST/Serotype axes - grouping
+strategy **C** from the comparison table (top 5 variants + "Other", 6
+categories total, ~53% of isolates in "Other" but every isolate still counted
+somewhere).
+
+```{r figure8 example2 data}
+ex2_data <- isolates %>%
+  count(production_type, Year, variant_top5, name = "n")
+
+ex2_year_order <- as.character(sort(unique(ex2_data$Year)))
+
+ex2_variant_order <- ex2_data %>%
+  mutate(year_pos = match(as.character(Year), ex2_year_order)) %>%
+  group_by(variant_top5) %>%
+  summarise(bary = weighted.mean(year_pos, w = n), n_total = sum(n), .groups = "drop") %>%
+  arrange(bary, desc(n_total)) %>%
+  pull(variant_top5)
+
+ex2_data <- ex2_data %>%
+  mutate(
+    Year_f = factor(as.character(Year), levels = ex2_year_order),
+    variant_top5 = factor(variant_top5, levels = ex2_variant_order)
+  )
+```
+
+```{r figure8 example2}
+fig8_ex2 <- ex2_data %>%
+  ggplot(aes(axis1 = production_type, axis2 = Year_f, axis3 = variant_top5, y = n)) +
+  geom_alluvium(aes(fill = production_type), width = 1/5, alpha = 0.8) +
+  geom_stratum(width = 1/5, fill = "grey95", color = "grey40", linewidth = 0.25) +
+  geom_text(stat = "stratum", aes(label = after_stat(stratum)), size = 2.0) +
+  scale_x_discrete(limits = c("Production type", "Year", "Variant"), expand = c(0.08, 0.08)) +
+  scale_fill_manual(values = palette_qual[1:2]) +
+  labs(
+    title = "Example 2: Production type × Year × Variant (top 5 + Other)",
+    subtitle = "Variant (ST-Serotype) bucketed directly to its top 5 + \"Other\" - nothing excluded, unlike the old ≥ 10-isolate filter",
+    x = NULL, y = "Isolates", fill = "Production type"
+  ) +
+  theme_apec() +
+  theme(panel.grid = element_blank(), axis.text.y = element_blank(), legend.position = "bottom")
+
+fig8_ex2
+save_draft_plot(fig8_ex2, "fig8_example2_production_year_variant5.png", width = 30, height = 22)
+```
+
+### Example 3: Production type → ST (top 5 + Other) → Serotype (unrestricted)
+
+Same idea as Example 1, minus the year axis, production type first.
+
+```{r figure8 example3 data}
+ex3_data <- isolates %>%
+  count(production_type, ST_top5_label, Serotype, name = "n")
+
+ex3_st_order <- ex3_data %>%
+  group_by(ST_top5_label) %>%
+  summarise(n_total = sum(n), .groups = "drop") %>%
+  arrange(desc(n_total)) %>%
+  pull(ST_top5_label)
+
+ex3_serotype_order <- ex3_data %>%
+  mutate(st_pos = match(ST_top5_label, ex3_st_order)) %>%
+  group_by(Serotype) %>%
+  summarise(bary = weighted.mean(st_pos, w = n), n_total = sum(n), .groups = "drop") %>%
+  arrange(bary, desc(n_total)) %>%
+  pull(Serotype)
+
+ex3_data <- ex3_data %>%
+  mutate(
+    ST_top5_label = factor(ST_top5_label, levels = ex3_st_order),
+    Serotype = factor(Serotype, levels = ex3_serotype_order)
+  )
+```
+
+```{r figure8 example3}
+fig8_ex3 <- ex3_data %>%
+  ggplot(aes(axis1 = production_type, axis2 = ST_top5_label, axis3 = Serotype, y = n)) +
+  geom_alluvium(aes(fill = production_type), width = 1/5, alpha = 0.8) +
+  geom_stratum(width = 1/5, fill = "grey95", color = "grey40", linewidth = 0.25) +
+  geom_text(stat = "stratum", aes(label = after_stat(stratum)), size = 1.9) +
+  scale_x_discrete(limits = c("Production type", "ST", "Serotype"), expand = c(0.08, 0.08)) +
+  scale_fill_manual(values = palette_qual[1:2]) +
+  labs(
+    title = "Example 3: Production type × ST (top 5 + Other) × Serotype",
+    subtitle = "No year axis; ST bucketed to top 5 + \"Other ST\", Serotype not bucketed",
+    x = NULL, y = "Isolates", fill = "Production type"
+  ) +
+  theme_apec() +
+  theme(panel.grid = element_blank(), axis.text.y = element_blank(), legend.position = "bottom")
+
+fig8_ex3
+save_draft_plot(fig8_ex3, "fig8_example3_production_st5_serotype.png", width = 30, height = 24)
+```
