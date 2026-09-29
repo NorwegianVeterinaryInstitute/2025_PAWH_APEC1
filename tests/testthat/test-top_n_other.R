@@ -23,13 +23,22 @@ test_that("returns a character vector the same length as the input", {
   expect_length(result, length(x))
 })
 
-test_that("NA is folded into other_label rather than preserved as NA", {
-  # documents current behaviour: NA can never be "in the top n", so it lands
-  # in other_label like any other non-top value - callers with real missing
-  # data should filter/impute before grouping if that's not what they want
+test_that("NA is preserved as NA rather than folded into other_label", {
   x <- c("a", "a", "a", NA)
   result <- top_n_other(x, n = 1)
-  expect_equal(result, c("a", "a", "a", "Other"))
+  expect_equal(result, c("a", "a", "a", NA_character_))
+})
+
+test_that("NA values outside the top n are still NA, not other_label", {
+  x <- c("a", "a", "a", "b", "b", "c", NA)
+  result <- top_n_other(x, n = 1)
+  expect_equal(result, c("a", "a", "a", "Other", "Other", "Other", NA_character_))
+})
+
+test_that("NA on a factor input is preserved the same way as on a character vector", {
+  x_fct <- factor(c("a", "a", "b", NA))
+  result <- top_n_other(x_fct, n = 1)
+  expect_equal(result, c("a", "a", "Other", NA_character_))
 })
 
 test_that("factor input is grouped the same way as an equivalent character vector", {

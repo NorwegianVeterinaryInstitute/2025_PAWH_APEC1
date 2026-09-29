@@ -9,6 +9,7 @@
 #' @param x A character vector (one column).
 #' @param max_dist Maximum Levenshtein distance to flag as a possible typo.
 #' @return A tibble: value_a, value_b, distance, flag. Empty if nothing is flagged.
+#' NOTE: not sure I will use it - will have additional check
 check_spelling_homogeneity <- function(x, max_dist = 2) {
   vals <- sort(unique(x[!is.na(x)]))
   if (length(vals) < 2) {
