@@ -2,13 +2,16 @@
 #'
 #' @param x A character/factor vector.
 #' @param n Number of top levels to keep individually.
-#' @param other_label Label used for every value outside the top n (this
-#'   includes `NA`: a missing value is never itself in the top n, so it is
-#'   relabelled to `other_label` rather than staying `NA` - call
-#'   `stopifnot(!anyNA(x))` first if that would be misleading for a column).
-#' @return A character vector, same length as x.
+#' @param other_label Label used for every non-missing value outside the top n.
+#' @return A character vector, same length as x. `NA` in `x` stays `NA` - it's
+#'   "unknown", not "known but rare", so it is left alone rather than folded
+#'   into `other_label` (matches `forcats::fct_lump()`'s convention).
 top_n_other <- function(x, n = 5, other_label = "Other") {
   freq_order <- names(sort(table(x), decreasing = TRUE))
   top_levels <- freq_order[seq_len(min(n, length(freq_order)))]
-  dplyr::if_else(x %in% top_levels, x, other_label)
+  dplyr::case_when(
+    is.na(x) ~ NA_character_,
+    x %in% top_levels ~ as.character(x),
+    TRUE ~ other_label
+  )
 }
