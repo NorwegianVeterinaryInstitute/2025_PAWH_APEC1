@@ -1,5 +1,5 @@
 ---
-title: "Tidy data verification & visualisation trials"
+title: "Tidy data verification & visualisation"
 author: "Eve Zeyl Fiskebeck"
 date: "`r format(Sys.time(), '%d %B, %Y')`"
 params:
@@ -23,11 +23,23 @@ editor_options:
 <!--
 Requested in notes/20260929_updates_requested.md, scoped against the goals in notes/20260730_Distribution_visualisation.md.
 
-Source of truth for the raw import: results/Results_130226_SSM.xlsx, sheet "APEC_driftsformsjekk_120226 (2)" - same per-isolate table used in
-2_visualisation.qmd, so counts stay consistent across documents.
+Source of truth for the raw import: results/Results_130226_SSM.xlsx, sheet "APEC_driftsformsjekk_120226 (2)"
 -->
 
 Disclaimer: This quarto document - and code has been written by Antrhopic Claude Sonnet - and has been edited and verified by Eve Fiskebeck.
+
+Verified Folder code/R/viz
+- [x] palette_qual.R
+- [x] save_apec_plot.R
+- [x] theme_apec.R
+
+Verified Folder code/R
+- [x] check_spelling_homogeneity.R [will have to do manual check also]
+- [x] grouping_helpers.R
+- [x] my_summary_fun.R
+
+- [ ] Verified this file
+
 
 # Setup
 ```{r setup}
@@ -39,25 +51,17 @@ library(scales)
 library(ggalluvial)
 ```
 
-`quarto render` (or the Render button) populates `params` from the YAML header
-automatically before the first chunk runs. Running chunks one-by-one in
-Positron/VS Code/RStudio does not - there is no render step, so `params` never
-gets created and every `params$...` reference below fails with "object
-'params' not found". The fix is the same one used in
-`1_data_wrangling.qmd`, tightened with an `exists()` guard so it only ever
-fills the gap for interactive use and never overwrites the real, possibly
-overridden, params from an actual render.
-
 ```{r params for interactive sessions}
+# Allows getting parameters when working in Positron (Not needed if working in Rstudio)
 if (!exists("params")) {
-  params <- list(
-    results_xlsx = "results/Results_130226_SSM.xlsx",
-    isolate_sheet = "APEC_driftsformsjekk_120226 (2)",
-    source_code = "code/R",
-    source_viz = "code/R/viz",
-    output_dir = "results/202609_data_output",
-    figures_dir = "results/figures/202609_draft"
-  )
+  this_file <- NULL
+  if (rstudioapi::isAvailable()) {
+    this_file <- rstudioapi::getSourceEditorContext()$path
+  }
+  if (is.null(this_file) || !nzchar(this_file)) {
+    this_file <- here::here("code", "20260929_TidyData_Visualisation.qmd")
+  }
+  params <- rmarkdown::yaml_front_matter(this_file)$params
 }
 ```
 
@@ -68,12 +72,6 @@ fun_files_path <- c(
 )
 sapply(fun_files_path, source, .GlobalEnv)
 ```
-
-`save_draft_plot()` - a local ggsave wrapper pointed at `params$figures_dir`
-instead of the fixed `results/figures/drafts|final` path `save_apec_plot()`
-(`code/R/viz/theme_apec.R`) uses for `2_visualisation.qmd` - now lives in its
-own file, `code/R/save_draft_plot.R`, and is picked up by the "source reused
-functions" chunk above like every other helper.
 
 ```{r output dirs}
 if (!dir.exists(here::here(params$output_dir))) {
@@ -88,28 +86,51 @@ if (!dir.exists(here::here(params$figures_dir))) {
 
 ## 1.1 Data import
 
+Keep only Sample id plus what verification, grouping and Part 2's figures
+actually use - `ST`/`Serotype` renamed and coerced to character here so
+nothing downstream touches the raw `mlst_scheme_list/sequence_type` /
+`SeroTypeFinder/SeroType` names again.
+
+A note: I only verified/asked questions for the spelling and re-encoding - for the fields that are included in the downstream figures (or kept in this data)
+ST, Serotype, Production, Species
+
 ```{r load data}
 isolates_raw <- read_excel(
   here::here(params$results_xlsx),
   sheet = params$isolate_sheet
-)
+) %>%
+  select(
+    Sample, Year, 
+    Case = sak,
+    ST = `mlst_scheme_list/sequence_type`,
+    Serotype = `SeroTypeFinder/SeroType`,
+    Production = driftsformnavn,
+    Species = artnavn
+  ) %>%
+  mutate(ST = as.character(ST))
+```
+
+```{r initial glimpse}
+glimpse(isolates_raw)
 ```
 
 ## 1.2 Completeness checks
 
-Same checks as `2_visualisation.qmd`: one row per isolate, and the fields every
-downstream figure depends on (year, ST, serotype, production type) must be
-complete.
+One row per isolate, and the fields every downstream figure depends on
+(year, ST, serotype, production type) must be complete.
 
 ```{r qc checks}
 qc <- list(
   n_rows = nrow(isolates_raw),
   n_distinct_sample = n_distinct(isolates_raw$Sample),
   n_missing_year = sum(is.na(isolates_raw$Year)),
-  n_missing_ST = sum(is.na(isolates_raw[["mlst_scheme_list/sequence_type"]])),
-  n_missing_serotype = sum(is.na(isolates_raw[["SeroTypeFinder/SeroType"]])),
-  n_missing_driftsform = sum(is.na(isolates_raw$driftsformnavn))
-)
+  n_missing_case = sum(is.na(isolates_raw$Case)),
+  n_missing_ST = sum(is.na(isolates_raw$ST)),
+  n_missing_serotype = sum(is.na(isolates_raw$Serotype)),
+  n_missing_production = sum(is.na(isolates_raw$Production)),
+  n_missing_species = sum(is.na(isolates_raw$Species))
+  )
+
 qc
 
 stopifnot(
@@ -117,34 +138,30 @@ stopifnot(
   "Year must be complete" = qc$n_missing_year == 0,
   "ST must be complete" = qc$n_missing_ST == 0,
   "Serotype must be complete" = qc$n_missing_serotype == 0,
-  "driftsformnavn must be complete" = qc$n_missing_driftsform == 0
+  "Production must be complete" = qc$n_missing_production == 0
 )
 ```
 
 ## 1.3 Category spelling / homogeneity check
 
-`check_spelling_homogeneity()` (`code/R/check_spelling_homogeneity.R`) flags pairs of
-values in a column that are identical after trimming/casefolding
-("case_or_whitespace" - safe to auto-fix) or within a small edit distance
-("possible_typo" - needs a human read).
 
-Different tolerance per column type, deliberately:
+`check_spelling_homogeneity()` flags pairs of values in a column that are
+identical after trimming/casefolding ("case_or_whitespace" - safe to
+auto-fix) or within a small edit distance ("possible_typo" - needs a human
+read).
 
-- `driftsformnavn`, `artnavn` are free-text-ish controlled vocabulary -
-  a 1-2 character difference there is almost always a typo/encoding artifact,
-  so these use the default `max_dist = 2`.
-- `ST` and `Serotype` are structured nomenclature codes where a 1-character
-  difference is usually a genuinely different real code (`O1:H4` vs. `O1:H7`
-  are different antigens, not a typo of each other) - fuzzy-matching these
-  produces mostly false positives, so they're checked at `max_dist = 0`
-  (case/whitespace collisions only).
+Tolerance differs by column: `Production`/`Species` are free text, so a
+1-2 character difference is almost always a typo (`max_dist = 2`); `ST`/
+`Serotype` are nomenclature codes where a 1-character difference is usually a
+genuinely different code (`O1:H4` vs. `O1:H7`), so only exact
+case/whitespace collisions are flagged (`max_dist = 0`).
 
 ```{r spelling checks}
 spelling_flags <- bind_rows(
-  check_spelling_homogeneity(isolates_raw$driftsformnavn, max_dist = 2) %>% mutate(column = "driftsformnavn"),
-  check_spelling_homogeneity(isolates_raw$artnavn, max_dist = 2) %>% mutate(column = "artnavn"),
-  check_spelling_homogeneity(as.character(isolates_raw[["mlst_scheme_list/sequence_type"]]), max_dist = 0) %>% mutate(column = "ST"),
-  check_spelling_homogeneity(isolates_raw[["SeroTypeFinder/SeroType"]], max_dist = 0) %>% mutate(column = "Serotype")
+  check_spelling_homogeneity(isolates_raw$Production, max_dist = 2) %>% mutate(column = "Production"),
+  check_spelling_homogeneity(isolates_raw$Species, max_dist = 2) %>% mutate(column = "Species"),
+  check_spelling_homogeneity(isolates_raw$ST, max_dist = 0) %>% mutate(column = "ST"),
+  check_spelling_homogeneity(isolates_raw$Serotype, max_dist = 0) %>% mutate(column = "Serotype")
 ) %>%
   relocate(column)
 
@@ -153,54 +170,72 @@ spelling_flags
 write_csv(spelling_flags, file.path(here::here(params$output_dir), "spelling_flags.csv"))
 ```
 
-Findings from this pass (fixed below):
-
-- `driftsformnavn`: confirms the known mojibake artifact - "Foreldredyr,
-  kjøttproduksjon" vs. "Foreldredyr, kj�ttproduksjon" (2 rows, corrupted
-  ø). `2_visualisation.qmd` sidesteps this downstream by matching on the
-  "Foreldredyr" prefix; here the value itself is corrected so the *exported*
-  verified data is clean, not just the derived column.
-- `artnavn`: "Rowan ranger" vs. "Rowan Ranger" is a genuine case duplicate (not
-  a distinct breed) - normalized to "Rowan Ranger". The other near-neighbours
-  (Ross 308 / Rowan 308 / Ross rowan / Ross) are real, distinct breed/trade
-  names and are correctly *not* flagged at `max_dist = 2`.
-- `ST` / `Serotype`: nothing flagged - no case/whitespace duplicates in either
-  column.
+Findings, fixed below: `Production` has a known mojibake artifact
+("Foreldredyr, kjøttproduksjon" vs. corrupted "Foreldredyr,
+kj�ttproduksjon", 2 rows); `Species` has one genuine case duplicate
+("Rowan ranger" vs. "Rowan Ranger" - the other near-neighbours are real,
+distinct breed names and are correctly not flagged); `ST`/`Serotype` have
+nothing flagged.
 
 ```{r fix flagged values}
 isolates_fixed <- isolates_raw %>%
   mutate(
-    driftsformnavn = if_else(
-      driftsformnavn == "Foreldredyr, kj�ttproduksjon",
+    Production = if_else(
+      Production == "Foreldredyr, kj�ttproduksjon",
       "Foreldredyr, kjøttproduksjon",
-      driftsformnavn
-    ),
-    artnavn = if_else(artnavn == "Rowan ranger", "Rowan Ranger", artnavn)
-  )
+      Production)
+    )
 ```
 
-## 1.4 Cleaning: production type (broiler / parent flock)
 
-Same recoding as `2_visualisation.qmd`, now applied to the already-fixed
-`driftsformnavn`.
+<!-- ok asked the questions for recoding
+
+Additional manual check of the spelling 
+
+```{r verifying spelling}
+my_summary_fun(isolates_fixed, Sample) %>%
+  write_csv(file.path(here::here(params$output_dir), "manual_check.csv"))
+```
+--> 
+
+## 1.4 Cleaning: production type (broiler / parent flock)
 
 ```{r clean driftsform}
 isolates <- isolates_fixed %>%
   mutate(
     production_type = case_when(
-      str_starts(driftsformnavn, "Foreldredyr") ~ "Parent flock",
-      driftsformnavn == "Kjøttproduksjon" ~ "Broiler",
+      str_starts(Production, "Foreldredyr") ~ "Parent flock",
+      Production == "Kjøttproduksjon" ~ "Broiler",
       TRUE ~ NA_character_
     ),
     production_type = factor(production_type, levels = c("Broiler", "Parent flock")),
-    ST = as.character(.data[["mlst_scheme_list/sequence_type"]]),
-    Serotype = .data[["SeroTypeFinder/SeroType"]],
     Year = as.integer(Year)
-  )
+  ) %>%
+    mutate(
+      Species = case_when(
+        Species == "Høns" ~ "Chicken",
+        Species == "Hubbard" ~ "Hubbard",
+        Species == "Hubbard JA 787" ~ "Hubbard",
+        Species == "Ross" ~ "Ross 308",
+        Species == "Ross 308" ~ "Ross 308",
+        Species == "Ross rowan" ~ "Ross rowan",
+        Species == "Rowan 308" ~ "Rowan 308",
+        Species == "Rowan Ranger" ~ "Rowan ranger",
+        Species == "Rustic gold" ~ "Rustic gold",
+        Species == "Sasso" ~ "Sasso",
+        TRUE ~ Species
+      ),
+      Species = factor(Species, levels = c(
+        "Chicken",  "Ross 308", "Hubbard", "Ross rowan", "Rowan 308", "Rowan ranger", "Rustic gold", "Sasso")
+      )
+    ) %>%
+    select(-Production)
 
 stopifnot("production_type must be complete after recoding" = sum(is.na(isolates$production_type)) == 0)
-
+stopifnot("Species must be complete after recoding" = sum(is.na(isolates$Species)) == 0)
 count(isolates, production_type)
+count(isolates, Species)
+
 ```
 
 ## 1.5 New variable: `variant` (ST-Serotype combination)
@@ -209,11 +244,17 @@ Requested format: `ST23-O78:H4`.
 
 ```{r variant column}
 isolates <- isolates %>%
-  mutate(variant = paste0("ST", ST, "-", Serotype))
+  mutate(
+    ST = paste0("ST", ST),
+    variant = paste0(ST, "-", Serotype)
+    )
 
 n_distinct(isolates$variant)  # 134 distinct ST-Serotype combinations observed
 head(count(isolates, variant, sort = TRUE), 5)
 ```
+
+Compute how many ST and how many serotypes when keep top 5 variants - and how many others 
+
 
 ## 1.6 Grouping for figures: top-5 + "Other" (three strategies)
 
@@ -221,9 +262,8 @@ The notes flag an open question for Figure 8: *"ST and serotype as top five,
 or only ST as top five?"* - i.e. should ST and Serotype be bucketed to their
 top 5 separately, or is there a third option of bucketing the combined
 `variant` directly? All three are built here as reusable columns
-(`top_n_other()` in `code/R/grouping_helpers.R`) so the comparison below has
-real numbers instead of guesswork, and Figure 8's three examples can each pick
-whichever fits.
+(`top_n_other()`) so the comparison below has real numbers instead of
+guesswork, and Figure 8's three examples can each pick whichever fits.
 
 ```{r grouped columns}
 isolates <- isolates %>%
@@ -315,14 +355,10 @@ write_xlsx(contingency_tables, file.path(here::here(params$output_dir), "conting
 
 ## 1.8 Export the verified, tidy per-isolate dataset
 
-One row per isolate, spelling-corrected, with `production_type`, `variant` and
-the three top-5 grouping columns attached - the base table for Part 2 and for
-any later figure.
-
 ```{r export tidy isolates}
 isolates_tidy <- isolates %>%
   select(
-    Sample, Year, sak, produsentnr, production_type, driftsformnavn, artnavn,
+    Sample, Year, Case, production_type, Production, Species,
     ST, Serotype, variant, ST_top5, ST_top5_label, Serotype_top5, variant_top5
   )
 
@@ -334,39 +370,19 @@ nrow(isolates_tidy)
 
 # Part 2: Graph trials (draft, on verified data)
 
-Both requested chart families - collaborators "like both sankey and pie chart
-plots" - are drafted below: Figure 8's alluvial diagrams *are* Sankey-style
-flow charts (`ggalluvial`), and Figure 7 is the sized-bubble chart described in
-the notes.
+Collaborators like both sankey and pie chart plots: Figure 8's alluvial
+diagrams are the Sankey-style flow charts (`ggalluvial`), Figure 7 is the
+sized-bubble chart.
 
 ## Figure 7: variant composition (sized-bubble "pie" chart)
 
-No prior Figure 7 code exists in this repo (not in `2_visualisation.qmd` or
-its history) - this is a fresh build from the description in the notes, not an
-edit of something pre-existing, so treat the chart form itself as a proposal
-to confirm.
-
-Reading of the brief: "size of the circles ... proportional to isolate count",
-plus an *x-axis* with labels needing rotation, means this isn't a literal
-radial pie (no x-axis on a pie) but a proportional-bubble chart - circle area
-(not radius) encodes isolate count, which is the honest way to encode
-magnitude by size (`scale_size_area`). Per the notes:
-
-- On-chart label is the variant text only (`ST23-O78:H4`) - no isolate/case
-  counts drawn on the plot.
-- Counts and sent-case (insendelse) numbers go to a supplementary table
-  instead (`fig7_variant_supplementary.xlsx`).
-- Legend moved to the right, with its own line explaining what circle size
-  means.
-- x-axis labels rotated near-vertical.
-- Kept the broiler/parent distinction (a must-have per the goals note) as the
-  y-position/color of each bubble rather than dropping to a single row of
-  circles - open to dropping this if that's not what was meant.
-
-Top 10 variants by isolate count (not the top5+Other bucketing from Part 1 -
-diluting distinct top combinations into one "Other" bubble would defeat a
-chart whose whole point is to name the common ones); the rest are exactly what
-the supplementary table is for.
+Not a literal radial pie - "size of the circles proportional to isolate
+count" plus rotated *x-axis* labels means a proportional-bubble chart
+(circle area, not radius, via `scale_size_area`). On-chart label is the
+variant text only (`ST23-O78:H4`); counts and sent-case (insendelse) numbers
+go to a supplementary table instead. Top 10 variants by isolate count (the
+top5+Other bucketing from Part 1 would dilute the point of naming the common
+ones); the rest is exactly what the supplementary table is for.
 
 ```{r figure7 data}
 fig7_top_n <- 10
@@ -389,7 +405,7 @@ fig7_supplementary <- isolates %>%
   group_by(variant, ST, Serotype) %>%
   summarise(
     n_isolates = n(),
-    n_sent_cases = n_distinct(sak),
+    n_sent_cases = n_distinct(Case),
     shown_in_fig7 = first(shown_in_fig7),
     .groups = "drop"
   ) %>%
@@ -420,24 +436,20 @@ fig7 <- fig7_data %>%
   )
 
 fig7
-save_draft_plot(fig7, "fig7_variant_bubble.png", width = 26, height = 12)
+save_apec_plot(fig7, "fig7_variant_bubble.png", dir = params$figures_dir, width = 26, height = 12)
 ```
 
 ## Figure 8: three ST × Serotype flow examples (Sankey/alluvial)
 
-Same three axis layouts as the notes, each reusing the `geom_alluvium` /
-`geom_stratum` pattern already established in `2_visualisation.qmd` (Figures
-3b-3e, 8, 8b), but grouping to top-5 + "Other" instead of *filtering* to a
-count threshold - so, unlike the old Figure 8, every isolate is still
-represented somewhere (in a named stratum or in "Other"), none are dropped.
+Grouped to top-5 + "Other" rather than filtered by a count threshold, so
+every isolate is represented somewhere (a named stratum or "Other"), none
+dropped.
 
 ### Example 1: Year → ST (top 5 + Other) → Serotype (unrestricted)
 
-Same three axes as the old (rejected) Figure 8, with the one change requested:
-ST bucketed to its top 5 + "Other ST". Flagged risk, from the grouping
-comparison above: Serotype is *not* bucketed here, so this axis still carries
-~115 levels - the old Figure 8 was rejected for exactly this kind of tangle,
-so treat this as the literal example requested rather than an expected win.
+Serotype is *not* bucketed here, so that axis still carries ~115 levels -
+likely to look tangled; kept as the literal example requested rather than an
+expected win.
 
 ```{r figure8 example1 data}
 ex1_data <- isolates %>%
@@ -484,7 +496,7 @@ fig8_ex1 <- ex1_data %>%
   theme(panel.grid = element_blank(), axis.text.y = element_blank(), legend.position = "bottom")
 
 fig8_ex1
-save_draft_plot(fig8_ex1, "fig8_example1_year_st5_serotype.png", width = 32, height = 26)
+save_apec_plot(fig8_ex1, "fig8_example1_year_st5_serotype.png", dir = params$figures_dir, width = 32, height = 26)
 ```
 
 ### Example 2: Production type → Year → variant (top 5 + Other, kept)
@@ -524,14 +536,14 @@ fig8_ex2 <- ex2_data %>%
   scale_fill_manual(values = palette_qual[1:2]) +
   labs(
     title = "Example 2: Production type × Year × Variant (top 5 + Other)",
-    subtitle = "Variant (ST-Serotype) bucketed directly to its top 5 + \"Other\" - nothing excluded, unlike the old ≥ 10-isolate filter",
+    subtitle = "Variant (ST-Serotype) bucketed directly to its top 5 + \"Other\" - nothing excluded",
     x = NULL, y = "Isolates", fill = "Production type"
   ) +
   theme_apec() +
   theme(panel.grid = element_blank(), axis.text.y = element_blank(), legend.position = "bottom")
 
 fig8_ex2
-save_draft_plot(fig8_ex2, "fig8_example2_production_year_variant5.png", width = 30, height = 22)
+save_apec_plot(fig8_ex2, "fig8_example2_production_year_variant5.png", dir = params$figures_dir, width = 30, height = 22)
 ```
 
 ### Example 3: Production type → ST (top 5 + Other) → Serotype (unrestricted)
@@ -579,5 +591,5 @@ fig8_ex3 <- ex3_data %>%
   theme(panel.grid = element_blank(), axis.text.y = element_blank(), legend.position = "bottom")
 
 fig8_ex3
-save_draft_plot(fig8_ex3, "fig8_example3_production_st5_serotype.png", width = 30, height = 24)
+save_apec_plot(fig8_ex3, "fig8_example3_production_st5_serotype.png", dir = params$figures_dir, width = 30, height = 24)
 ```

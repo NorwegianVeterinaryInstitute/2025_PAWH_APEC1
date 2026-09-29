@@ -13,19 +13,45 @@ Data verification: exploration
 - directory results/202609_data_output
 - new resutls figures results/figures/202609_draft
 
+Questions to Solveig for Data cleaning 
+                       Production
+Foreldredyr, kjøttproduksjon:234   -> Parents
+Kjøttproduksjon             :650   -> Broilers
+
+
+Species 
+Høns          : 77  -> Chicken
+Hubbard       : 40  -> Hubbard
+Hubbard JA 787:100  -> Hubbard
+Ross          :  1  -> Ross 308
+Ross 308      :646  -> Ross 308
+Ross rowan    :  3  -> Ross rowan
+Rowan 308     :  1  -> Rowan 308
+Rowan Ranger  :  9  -> Rowan ranger
+Rustic gold   :  2  -> Rustic gold
+Sasso         :  5  -> Sasso
+
+
+Serotypes that contain ONT or HNT ? processing  -> keep as such 
+
+
+Top5 -> Apec Variants 
+
+
+
 ## Part 2: graphs final trials 
 - on the validated data 
-
 - they like both sankey and piechart plot 
 
 ### Based on  Fig7 pie chart 
+
 - remove the number isolates / cases
 - number of isolates / and send cases -> refer to supplementary 
 - label showing size of the circles the - and represent proportional to isolate count 
 - want it to say ST23-O78:H4 
 - Try to move the legend on the right size and make more vertical the x label 
 - try to say something legend size circle
-
+- use the variants combination -> top 5 (if not enough top 10)
 
 
 
