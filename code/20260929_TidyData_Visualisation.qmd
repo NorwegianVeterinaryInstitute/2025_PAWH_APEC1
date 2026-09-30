@@ -620,8 +620,9 @@ This is the data we use to produce the figure
 Creating the sankey plot:
 
 ```{r figure8 ex1 sankey}
-fig8_ex1_width_cm <- 24
+fig8_ex1_width_cm <- 26
 fig8_ex1_height_cm <- 14
+fig8_ex1_box_width <- 1/4  # wider stratum boxes - 1/8 was too narrow for the longer Serotype labels
 
 # ST_top5/Serotype_top5 are thresholded independently (see prep chunk above),
 # so "Other" can legitimately occur on both axes for the same isolate. Giving
@@ -629,11 +630,35 @@ fig8_ex1_height_cm <- 14
 # treating them as the same stratum (its "some strata appear at multiple
 # axes" warning) without resorting to discern = TRUE's auto-suffixed labels
 # ("Other.1"/"Other.2").
+#
+# Levels are set kept-categories-first, "Other ST"/"Other Serotype" last, so
+# that bucket (secondary information) stacks at the bottom of its axis block
+# rather than being interleaved with the named categories.
+ST_top5_levels_ex1 <-
+  top5_ex1_fig8 %>%
+  mutate(ST_top5 = if_else(ST_top5 == "Other", "Other ST", ST_top5)) %>%
+  group_by(ST_top5) %>%
+  summarise(total = sum(n), .groups = "drop") %>%
+  arrange(desc(total)) %>%
+  pull(ST_top5)
+ST_top5_levels_ex1 <- c(setdiff(ST_top5_levels_ex1, "Other ST"), "Other ST")
+
+Serotype_top5_levels_ex1 <-
+  top5_ex1_fig8 %>%
+  mutate(Serotype_top5 = if_else(Serotype_top5 == "Other", "Other Serotype", Serotype_top5)) %>%
+  group_by(Serotype_top5) %>%
+  summarise(total = sum(n), .groups = "drop") %>%
+  arrange(desc(total)) %>%
+  pull(Serotype_top5)
+Serotype_top5_levels_ex1 <- c(setdiff(Serotype_top5_levels_ex1, "Other Serotype"), "Other Serotype")
+
 fig8_ex1_plot_data <-
   top5_ex1_fig8 %>%
   mutate(
     ST_top5 = if_else(ST_top5 == "Other", "Other ST", ST_top5),
-    Serotype_top5 = if_else(Serotype_top5 == "Other", "Other Serotype", Serotype_top5)
+    Serotype_top5 = if_else(Serotype_top5 == "Other", "Other Serotype", Serotype_top5),
+    ST_top5 = factor(ST_top5, levels = ST_top5_levels_ex1),
+    Serotype_top5 = factor(Serotype_top5, levels = Serotype_top5_levels_ex1)
   )
 
 fig8_ex1 <-
@@ -641,8 +666,8 @@ fig8_ex1 <-
     fig8_ex1_plot_data,
     aes(axis1 = factor(Year), axis2 = ST_top5, axis3 = Serotype_top5, y = n)
   ) +
-  geom_alluvium(aes(fill = production_type), width = 1/8, alpha = 0.8) +
-  geom_stratum(width = 1/8, fill = "grey90", color = "grey40") +
+  geom_alluvium(aes(fill = production_type), width = fig8_ex1_box_width, alpha = 0.8) +
+  geom_stratum(width = fig8_ex1_box_width, fill = "grey90", color = "grey40") +
   geom_text(stat = "stratum", aes(label = after_stat(stratum)), size = 3) +
   scale_x_discrete(limits = c("Year", "ST", "Serotype"), expand = c(0.05, 0.05)) +
   scale_fill_manual(values = palette_qual[1:2], name = "Production type") +
@@ -662,5 +687,9 @@ save_apec_plot(fig8_ex1, "fig8_ex1_top5ST_sankey.png", dir = params$figures_dir,
 ```
 
 #### Top 5 ST example 2
-- data - same principle above but grouping variable for data is ST, then serotype and variant as other column  
-- display sankey  blocks: production type, year, variant
+
+- same logic as example 1 But : 
+- display sankey  blocks: production type, year, variant (top5 also and other)
+- Ribons top 5 ST + other ST - coloured
+So we need new data wrangling then display.
+
