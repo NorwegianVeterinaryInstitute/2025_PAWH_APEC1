@@ -688,8 +688,96 @@ save_apec_plot(fig8_ex1, "fig8_ex1_top5ST_sankey.png", dir = params$figures_dir,
 
 #### Top 5 ST example 2
 
-- same logic as example 1 But : 
+- same logic as example 1 But :
 - display sankey  blocks: production type, year, variant (top5 also and other)
 - Ribons top 5 ST + other ST - coloured
 So we need new data wrangling then display.
+
+```{r grouped columns fig8 ex2}
+# same independent-thresholding logic as example 1: variant_top5 and ST_top5
+# are each thresholded against the full data, not chained through each other.
+top5_ex2_fig8_prep <-
+  isolates %>%
+  mutate(
+    variant_top5 = top_n_other(variant, 5, other_label = "Other"),
+    ST_top5 = top_n_other(ST, 5, other_label = "Other")
+  )
+```
+
+Now preparing data for visualisation
+```{r getting contingency table for fig8 ex2}
+top5_ex2_fig8 <-
+  top5_ex2_fig8_prep %>%
+  select(production_type, Year, variant_top5, ST_top5) %>%
+  group_by(production_type, Year, variant_top5, ST_top5) %>%
+  tally()
+
+top5_ex2_fig8
+write_tsv(top5_ex2_fig8, file.path(here::here(params$output_dir), "fig8_ex2_top5ST_variant_year_tally.tsv"))
+```
+
+This is the data we use to produce the figure
+
+Creating the sankey plot:
+
+```{r figure8 ex2 sankey}
+fig8_ex2_width_cm <- 26
+fig8_ex2_height_cm <- 14
+fig8_ex2_box_width <- 1/4
+
+# variant_top5 is the only axis with an "Other" bucket here (production_type
+# and Year have none), so unlike example 1 there's no cross-axis label
+# collision - it's kept plain and ordered last (secondary info, same
+# bottom-of-block convention as example 1). ST_top5's "Other" is only used
+# for fill (not an axis) but is still relabeled "Other ST" for a clear
+# legend entry.
+variant_top5_levels_ex2 <-
+  top5_ex2_fig8 %>%
+  group_by(variant_top5) %>%
+  summarise(total = sum(n), .groups = "drop") %>%
+  arrange(desc(total)) %>%
+  pull(variant_top5)
+variant_top5_levels_ex2 <- c(setdiff(variant_top5_levels_ex2, "Other"), "Other")
+
+ST_top5_levels_ex2 <-
+  top5_ex2_fig8 %>%
+  mutate(ST_top5 = if_else(ST_top5 == "Other", "Other ST", ST_top5)) %>%
+  group_by(ST_top5) %>%
+  summarise(total = sum(n), .groups = "drop") %>%
+  arrange(desc(total)) %>%
+  pull(ST_top5)
+ST_top5_levels_ex2 <- c(setdiff(ST_top5_levels_ex2, "Other ST"), "Other ST")
+
+fig8_ex2_plot_data <-
+  top5_ex2_fig8 %>%
+  mutate(
+    ST_top5 = if_else(ST_top5 == "Other", "Other ST", ST_top5),
+    variant_top5 = factor(variant_top5, levels = variant_top5_levels_ex2),
+    ST_top5 = factor(ST_top5, levels = ST_top5_levels_ex2)
+  )
+
+fig8_ex2 <-
+  ggplot(
+    fig8_ex2_plot_data,
+    aes(axis1 = production_type, axis2 = factor(Year), axis3 = variant_top5, y = n)
+  ) +
+  geom_alluvium(aes(fill = ST_top5), width = fig8_ex2_box_width, alpha = 0.8) +
+  geom_stratum(width = fig8_ex2_box_width, fill = "grey90", color = "grey40") +
+  geom_text(stat = "stratum", aes(label = after_stat(stratum)), size = 3) +
+  scale_x_discrete(limits = c("Production type", "Year", "Variant"), expand = c(0.05, 0.05)) +
+  scale_fill_manual(values = palette_qual[1:6], name = "ST") +
+  labs(
+    title = "Top 5 ST example 2: isolate flow by production type, year, variant",
+    x = NULL, y = "Number of isolates"
+  ) +
+  theme_apec() +
+  theme(
+    axis.text.y = element_blank(),
+    axis.ticks.y = element_blank(),
+    panel.grid = element_blank()
+  )
+
+fig8_ex2
+save_apec_plot(fig8_ex2, "fig8_ex2_top5ST_variant_sankey.png", dir = params$figures_dir, width = fig8_ex2_width_cm, height = fig8_ex2_height_cm)
+```
 
