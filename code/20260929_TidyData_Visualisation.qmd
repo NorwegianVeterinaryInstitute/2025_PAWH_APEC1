@@ -33,6 +33,7 @@ Verified Folder code/R/viz
 - [x] save_apec_plot.R
 - [x] theme_apec.R
 - [ ] theme_apec_piematrix.R
+- [ ] panel_mm_per_data_unit.R
 
 Verified Folder code/R
 - [x] check_spelling_homogeneity.R [will have to do manual check also]
@@ -416,51 +417,36 @@ sqrt(1) = 1. For a smaller cell, e.g. 50 isolates: sqrt(50/189) = sqrt(0.265) = 
 --> 
 
 ```{r figure7 top5 pie}
-# geom_scatterpie_legend() draws its circles using the exact same r formula
-# as the real pies (data-coordinate radius), so it's correct by construction
-# regardless of output dimensions - the trade-off is it can't join the
-# Production type legend's legend box (that's a real ggplot legend, outside
-# the panel), so the closest we can get to "grouped, aligned" is positioning
-# it in its own row inside the panel, left-aligned under the data, directly
-# above where the Production type legend sits.
-legend_isolate_values <- c(10, 50, 100, round(max_total))
-legend_r_values <- 0.42 * sqrt(legend_isolate_values / max_total)
+# save dimensions - fixed here (not just passed to save_apec_plot below)
+# because the legend calibration two steps down needs to know the exact
+# physical size the panel will render at; if these change, the plot must be
+# rebuilt (calibrate -> plot) for the legend to stay correct - they can't
+# drift apart since both read from the same two variables.
+fig7_width_cm <- 32
+fig7_height_cm <- 18
 
-# text styling pulled from theme_apec()'s actual computed legend.title/
-# axis.text, not guessed, so this matches the rest of the plot
-theme_text <- ggplot2::calc_element("legend.title", ggplot2::theme_get() + theme_apec())
-axis_text <- ggplot2::calc_element("axis.text", ggplot2::theme_get() + theme_apec())
-
-min_year <- min(fig7_top5_pie_data$y)
-legend_x <- 1
-legend_y <- min_year - 1.4
-
-fig7_top5 <-
-  ggplot() +
+# the real pies (below) already carry a correct, data-coordinate radius (r).
+# For the "Isolate number" legend we want a REAL ggplot legend (so it joins
+# Production type's legend box, positioned automatically) - but a real
+# legend's `size` aesthetic is in mm, an entirely different unit system from
+# `r`'s data-coordinates, with no fixed relationship between them. Fix: render
+# the plot once off-screen at its real save size, measure how many mm one
+# data-unit actually occupies in the rendered, coord_equal() panel
+# (panel_mm_per_data_unit(), code/R/viz/), and use that to calibrate
+# scale_size_area()'s max_size so the legend's circles are the same physical
+# size as the real pies - not just at the endpoint (189), but everywhere,
+# since scale_size_area() applies the identical sqrt(value/max) transform
+# used for `r` below.
+base_plot <- ggplot() +
   geom_scatterpie(
     data = fig7_top5_pie_data,
     aes(x = x, y = y, r = r),
     cols = c("Broiler", "Parent flock"),
     color = NA
   ) +
-  geom_scatterpie_legend(
-    fig7_top5_pie_data$r,
-    x = legend_x, y = legend_y,
-    n = length(legend_r_values),
-    breaks = legend_r_values,
-    labeller = function(r) round((r / 0.42)^2 * max_total),
-    colour = axis_text$colour, size = axis_text$size / .pt, family = axis_text$family
-  ) +
-  annotate(
-    "text",
-    x = legend_x - max(legend_r_values),
-    y = legend_y + max(legend_r_values) + 0.3,
-    label = "Isolate number",
-    hjust = 0, size = theme_text$size / .pt, color = theme_text$colour, family = theme_text$family
-  ) +
   coord_equal() +
   scale_x_continuous(breaks = seq_along(variant_top5_levels) * x_spacing, labels = variant_top5_levels, expand = expansion(add = 0.7)) +
-  scale_y_continuous(breaks = sort(unique(fig7_top5_pie_data$Year)), expand = expansion(add = c(2.2, 0.6))) +
+  scale_y_continuous(breaks = sort(unique(fig7_top5_pie_data$Year)), expand = expansion(add = 0.6)) +
   scale_fill_manual(values = palette_qual[1:2], name = "Production type") +
   labs(
     title = "Top 5 variants (ST-Serotype), by year",
@@ -468,12 +454,22 @@ fig7_top5 <-
   ) +
   theme_apec_piematrix()
 
+mm_per_unit <- panel_mm_per_data_unit(base_plot, fig7_width_cm, fig7_height_cm)
+legend_max_size_mm <- 2 * 0.42 * mm_per_unit  # 0.42 = the real pies' max radius (see 1.6/data chunk above)
+
+fig7_top5 <- base_plot +
+  geom_point(data = fig7_top5_pie_data, aes(x = x, y = y, size = total), alpha = 0) +
+  scale_size_area(
+    name = "Isolate number", max_size = legend_max_size_mm, breaks = c(10, 50, 100, round(max_total)),
+    guide = guide_legend(override.aes = list(alpha = 1, shape = 21, color = "grey40", fill = "grey80"))
+  )
+
 fig7_top5
-save_apec_plot(fig7_top5, "fig7_top5_variant_piematrix_by_year.png", dir = params$figures_dir, width = 32, height = 18)
+save_apec_plot(fig7_top5, "fig7_top5_variant_piematrix_by_year.png", dir = params$figures_dir, width = fig7_width_cm, height = fig7_height_cm)
 ```
 
 **Pie = production type share; size = isolate count (area-proportional,
-same scale as the real pies - see chunk comments); counts in the
+calibrated to the real pies' scale - see chunk comments); counts in the
 supplementary table above.**
 
 
