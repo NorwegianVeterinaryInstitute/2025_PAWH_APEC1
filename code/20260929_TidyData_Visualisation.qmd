@@ -369,7 +369,7 @@ write_tsv(top5_variants_fig7, file.path(here::here(params$output_dir), "fig7_top
 
 This is the data we use to produce the figure
 
-# HERE 
+
 ```{r figure7 top5 pie data}
 # x order: top 5 by total isolate count (desc), "Other" always last
 variant_top5_totals <- 
@@ -576,3 +576,91 @@ save_apec_plot(fig7_top10, "fig7_top10_variant_piematrix_by_year.png", dir = par
 **Pie = production type share; size = isolate count (area-proportional,
 calibrated to the real pies' scale - see chunk comments above); counts in the
 supplementary table above.**
+
+
+### Fig 8 - Sankey/Alluvial
+> based on previous script visuals
+
+#### Top 5 ST example 1 
+Carefull data logic for filtering is not the same as fig 7 ! 
+
+- data using top 5 serotypes - and the rest serotype marked as other
+- we do also top 5 ST and other ST - so some other serotype might have ST in top 5
+
+- the draw the sankey with panels : year, ST and serotype - color ribon is Production type
+
+```{r grouped columns fig8 ex1}
+# Serotype_top5 and ST_top5 are each thresholded independently against the
+# full data - unlike Fig 7, where Serotype/ST labels were forced to "Other"
+# whenever variant was "Other" (a chained/dependent grouping). Here an
+# isolate can be Serotype "Other" while its ST is still one of the top 5 STs,
+# or vice versa.
+top5_ex1_fig8_prep <-
+  isolates %>%
+  mutate(
+    Serotype_top5 = top_n_other(Serotype, 5, other_label = "Other"),
+    ST_top5 = top_n_other(ST, 5, other_label = "Other")
+  )
+```
+
+Now preparing data for visualisation
+```{r getting contingency table for fig8 ex1}
+top5_ex1_fig8 <-
+  top5_ex1_fig8_prep %>%
+  select(Year, ST_top5, Serotype_top5, production_type) %>%
+  group_by(Year, ST_top5, Serotype_top5, production_type) %>%
+  tally()
+
+top5_ex1_fig8
+write_tsv(top5_ex1_fig8, file.path(here::here(params$output_dir), "fig8_ex1_top5ST_serotype_year_tally.tsv"))
+```
+
+This is the data we use to produce the figure
+
+Creating the sankey plot:
+
+```{r figure8 ex1 sankey}
+fig8_ex1_width_cm <- 24
+fig8_ex1_height_cm <- 14
+
+# ST_top5/Serotype_top5 are thresholded independently (see prep chunk above),
+# so "Other" can legitimately occur on both axes for the same isolate. Giving
+# each axis its own "Other ST"/"Other Serotype" label avoids ggalluvial
+# treating them as the same stratum (its "some strata appear at multiple
+# axes" warning) without resorting to discern = TRUE's auto-suffixed labels
+# ("Other.1"/"Other.2").
+fig8_ex1_plot_data <-
+  top5_ex1_fig8 %>%
+  mutate(
+    ST_top5 = if_else(ST_top5 == "Other", "Other ST", ST_top5),
+    Serotype_top5 = if_else(Serotype_top5 == "Other", "Other Serotype", Serotype_top5)
+  )
+
+fig8_ex1 <-
+  ggplot(
+    fig8_ex1_plot_data,
+    aes(axis1 = factor(Year), axis2 = ST_top5, axis3 = Serotype_top5, y = n)
+  ) +
+  geom_alluvium(aes(fill = production_type), width = 1/8, alpha = 0.8) +
+  geom_stratum(width = 1/8, fill = "grey90", color = "grey40") +
+  geom_text(stat = "stratum", aes(label = after_stat(stratum)), size = 3) +
+  scale_x_discrete(limits = c("Year", "ST", "Serotype"), expand = c(0.05, 0.05)) +
+  scale_fill_manual(values = palette_qual[1:2], name = "Production type") +
+  labs(
+    title = "Top 5 ST example 1: isolate flow by Year, ST, Serotype",
+    x = NULL, y = "Number of isolates"
+  ) +
+  theme_apec() +
+  theme(
+    axis.text.y = element_blank(),
+    axis.ticks.y = element_blank(),
+    panel.grid = element_blank()
+  )
+
+fig8_ex1
+save_apec_plot(fig8_ex1, "fig8_ex1_top5ST_sankey.png", dir = params$figures_dir, width = fig8_ex1_width_cm, height = fig8_ex1_height_cm)
+```
+
+#### Top 5 ST example 2
+- data - same principle above but grouping variable for data is ST, then serotype and variant as other column  
+- display sankey  blocks: production type, year, variant
