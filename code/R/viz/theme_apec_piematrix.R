@@ -11,6 +11,10 @@
 #' axis.text, which reads as an inconsistency once axis.text is styled
 #' explicitly here; overridden locally rather than in theme_apec() itself so
 #' figures already using that grey20 title elsewhere are unaffected.
+#' `legend.box.spacing` (gap between the axis block and the legend box) is
+#' widened and `legend.spacing.y` (gap between the two stacked legends within
+#' that box) is tightened, so the two legends read as a compact group set
+#' apart from the "Variant" axis title rather than blending into it.
 #'
 #' @param base_size Passed through to theme_apec().
 #' @return A ggplot2 theme object.
@@ -20,6 +24,8 @@ theme_apec_piematrix <- function(base_size = 11) {
       legend.position = "bottom",
       legend.box = "vertical",
       legend.box.just = "left",
+      legend.box.spacing = grid::unit(15, "pt"),
+      legend.spacing.y = grid::unit(0, "pt"),
       axis.title = ggplot2::element_text(color = "grey30"),
       axis.text = ggplot2::element_text(color = "grey30", size = ggplot2::rel(0.85)),
       axis.text.x = ggplot2::element_text(angle = 45, hjust = 1, vjust = 1),
