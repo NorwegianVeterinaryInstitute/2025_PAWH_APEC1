@@ -46,7 +46,7 @@ Top5 -> Apec Variants
 ### Based on  Fig7 pie chart 
 
 - remove the number isolates / cases
-- number of isolates / and send cases -> refer to supplementary 
+- number of isolates / and send cases -> refer to supplementary -> export table then
 - label showing size of the circles the - and represent proportional to isolate count 
 - want it to say ST23-O78:H4 
 - Try to move the legend on the right size and make more vertical the x label 

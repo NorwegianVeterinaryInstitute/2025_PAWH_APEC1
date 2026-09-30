@@ -37,7 +37,11 @@ Verified Folder code/R
 - [x] check_spelling_homogeneity.R [will have to do manual check also]
 - [x] grouping_helpers.R
 - [x] my_summary_fun.R
-- [ ] top_n_contingency.R
+- [x] top_n_contingency.R
+- [x] summarise_contingency.R
+- [ ] kept_vs_other.R
+- [ ] total_distinct_values.R
+- [ ] add_proportions.R
 
 - [ ] Verified this file
 
@@ -50,6 +54,7 @@ library(readxl)
 library(writexl)
 library(scales)
 library(ggalluvial)
+library(scatterpie)
 ```
 
 ```{r params for interactive sessions}
@@ -254,399 +259,176 @@ n_distinct(isolates$variant)  # 134 distinct ST-Serotype combinations observed
 head(count(isolates, variant, sort = TRUE), 5)
 ```
 
-## 1.6 ST, Serotype, variant contingency tables evaluation - top 5 / top 10 
+## 1.6 ST, Serotype, variant contingency tables evaluation - top 5 / top 10
 
-### Variants 
+Same question, two groupings: keep the top N *variants*, how many distinct
+ST/Serotype does that represent; keep the top N *ST*s instead, how many
+distinct Serotype/variant. Same `top_n_contingency()` +
+`summarise_contingency()` pattern for both, just a different `group_col` /
+`other_cols` - shared helpers (`kept_vs_other()`, `total_distinct_values()`,
+`add_proportions()`, all in `code/R/`) do the rest, one subsection each.
+
+```{r contingency helpers}
+# how many distinct values of ST/Serotype/variant exist overall, to turn
+# n_distinct_values (below) into a percentage of "how much of the diversity"
+total_distinct <- total_distinct_values(isolates, c("ST", "Serotype", "variant"))
+total_distinct
+```
+
+### Grouped by variant
 
 ```{r top n variant contingency}
-#  data, group_col, top_n, other_cols, other_label = "Other" 
-variant_contingency_top5 <- top_n_contingency(isolates, "variant", top_n = 5, other_cols = c("ST", "Serotype")) %>%
-  mutate(top_n = 5L)
-
-variant_contingency_top10 <- top_n_contingency(isolates, "variant", top_n = 10, other_cols = c("ST", "Serotype")) %>%
-  mutate(top_n = 10L)
-
-
-
-kept_vs_other <- function(contingency, top_n) {
-  contingency %>%
-    mutate(group_value = if_else(group_value == "Other", "other", "kept")) %>%
-    summarise_contingency() %>%
-    mutate(top_n = top_n, .before = 1)
-}
+variant_contingency_top5 <- top_n_contingency(isolates, "variant", top_n = 5, other_cols = c("ST", "Serotype"))
+variant_contingency_top10 <- top_n_contingency(isolates, "variant", top_n = 10, other_cols = c("ST", "Serotype"))
 
 variant_threshold_summary <- bind_rows(
   kept_vs_other(variant_contingency_top5, 5),
   kept_vs_other(variant_contingency_top10, 10)
-)
+) %>%
+  add_proportions(total_distinct, nrow(isolates))
+
+write_tsv(variant_threshold_summary, file.path(here::here(params$output_dir), "variant_threshold_summary.tsv"))
 
 variant_threshold_summary
 ```
 
-The direct answer - for the top 5 (or top 10) variants, how many distinct ST
-values and how many distinct Serotype values, and how many *other* ST/
-Serotype values are left outside that set:
+Reading this: keeping the top 5 variants covers 417/884 isolates (47.2%) but
+names only 5/88 STs (5.7%) and 5/115 serotypes (4.3%) - the "other" bucket is
+the minority of isolates (467, 52.8%) yet holds nearly all of the diversity
+(97.7% of STs, 99.1% of serotypes). Top 10 covers more isolates (550/884,
+62.2%) at a similar diversity trade-off - 8 STs (9.1%) and 10 serotypes
+(8.7%) named, 94.3%/95.7% still in "other". Neither threshold captures much
+ST/Serotype diversity - that's inherent to a "top N" cut on data this skewed
+(one variant, ST23-O78:H4, is 244/884 isolates - 27.6% - on its own), not a
+flaw in the threshold choice.
 
-```{r top n variant counts wide}
-variant_threshold_counts <- variant_threshold_summary %>%
-  select(top_n, other_col, group_value, n_distinct_values) %>%
-  pivot_wider(
-    names_from = c(other_col, group_value),
-    values_from = n_distinct_values,
-    names_glue = "n_{other_col}_{group_value}"
-  )
+### Grouped by ST
 
-variant_threshold_counts
-```
+```{r top n ST contingency}
+ST_contingency_top5 <- top_n_contingency(isolates, "ST", top_n = 5, other_cols = c("Serotype", "variant"))
+ST_contingency_top10 <- top_n_contingency(isolates, "ST", top_n = 10, other_cols = c("Serotype", "variant"))
 
-Reading this: keeping the top 5 variants names 5 STs and 5 serotypes, leaving
-86 other STs and 114 other serotypes unnamed; the top 10 variants name 8 STs
-and 10 serotypes, leaving 83 and 110. (Fewer than 10 *ST*s for the top-10
-case because a couple of STs repeat across two different top-10 variants,
-e.g. ST117 pairs with two different serotypes.)
-
-Or per-value, not collapsed to kept/other - `summarise_contingency()` used directly on the
-contingency table shows this for every individual kept variant too:
-
-```{r top n variant contingency per value}
-summarise_contingency(variant_contingency_top5)
-```
-
-## 1.7 Grouping for figures: top-5 + "Other" (three strategies)
-
-The notes flag an open question for Figure 8: *"ST and serotype as top five,
-or only ST as top five?"* - i.e. should ST and Serotype be bucketed to their
-top 5 separately, or is there a third option of bucketing the combined
-`variant` directly? All three are built here as reusable columns
-(`top_n_other()`) so the comparison below has real numbers instead of
-guesswork, and Figure 8's three examples can each pick whichever fits.
-
-```{r grouped columns}
-isolates <- isolates %>%
-  mutate(
-    ST_top5 = top_n_other(ST, 5, other_label = "Other"),
-    # ST already reads "ST23" (prefixed in 1.5) - no second "ST" here
-    ST_top5_label = if_else(ST_top5 == "Other", "Other ST", ST_top5),
-    Serotype_top5 = top_n_other(Serotype, 5, other_label = "Other Serotype"),
-    variant_top5 = top_n_other(variant, 5, other_label = "Other")
-  )
-```
-
-```{r grouping comparison}
-grouping_comparison <- tibble(
-  strategy = c(
-    "A: ST top5+Other, Serotype unrestricted",
-    "B: ST top5+Other x Serotype top5+Other (crossed)",
-    "C: variant (ST-Serotype) top5+Other, direct"
-  ),
-  n_categories_or_strata = c(
-    isolates %>% distinct(ST_top5_label, Serotype) %>% nrow(),
-    isolates %>% distinct(ST_top5_label, Serotype_top5) %>% nrow(),
-    n_distinct(isolates$variant_top5)
-  ),
-  n_isolates_in_largest_other_bucket = c(
-    sum(isolates$ST_top5 == "Other"),
-    isolates %>% filter(ST_top5 == "Other", Serotype_top5 == "Other Serotype") %>% nrow(),
-    sum(isolates$variant_top5 == "Other")
-  )
+ST_threshold_summary <- bind_rows(
+  kept_vs_other(ST_contingency_top5, 5),
+  kept_vs_other(ST_contingency_top10, 10)
 ) %>%
-  mutate(pct_in_that_bucket = round(100 * n_isolates_in_largest_other_bucket / nrow(isolates), 1))
+  add_proportions(total_distinct, nrow(isolates))
 
-grouping_comparison
+write_tsv(ST_threshold_summary, file.path(here::here(params$output_dir), "ST_threshold_summary.tsv"))
+
+ST_threshold_summary
 ```
 
-Reading this: **A** barely reduces visual complexity (122 of 134 combinations
-survive, because Serotype - the wider axis at 115 levels - stays unrestricted)
-and buries 43% of isolates in an ST-only "Other". **B** gets to a genuinely
-readable 13 strata but its Other×Other cell alone hides 34% of isolates with
-no ST or Serotype identity left. **C** is the most compact (6 categories) but
-hides the most isolates (53%) - because it only credits a combination that
-makes the *joint* top 5, not a common ST or common Serotype on their own.
-There's no free lunch here; Figure 8's three examples below use A, C and A
-again respectively (per the notes), so this table is the reference for judging
-what each one is trading away.
+Reading this: grouping by ST instead captures more diversity per isolate,
+because one ST can carry several different serotypes. Top 5 STs cover
+505/884 isolates (57.1%) and represent 18/115 serotypes (15.7%) and 19/134
+variants (14.2%) - roughly 3-4x the serotype/variant coverage of the top-5
+*variant* grouping, for a similar isolate share. "Other" (379 isolates,
+42.9%) still holds most of the diversity (103 serotypes, 89.6%; 115
+variants, 85.8%). Top 10 STs: 645/884 isolates (73.0%), 23 serotypes (20.0%),
+25 variants (18.7%) named; 239 other isolates (27.0%) still cover 98
+serotypes (85.2%) and 109 variants (81.3%).
 
-## 1.8 Contingency tables + top 5 (ST, Serotype, variant)
+## Preparing for figures 
 
-```{r contingency tables}
-st_contingency <- isolates %>%
-  count(ST, name = "n_isolates") %>%
-  arrange(desc(n_isolates)) %>%
-  mutate(is_top5 = ST %in% (isolates %>% count(ST, sort = TRUE) %>% slice_max(n, n = 5, with_ties = FALSE) %>% pull(ST)))
+### Fig 7 - Pie Matrix 
+- [ ] remove the number isolates / cases
+- [ ] pie size proportional to isolate count 
+- [ ] number of isolates / and send cases text removed - will be refered in the suplementary -> export this as tsv table then
+- [ ] Legend for the size of the circles (try right first)
+- [ ] Try to move the legend on the right size and make more vertical the x label 
+- [ ] X axis = variants - want it to say ST23-O78:H4  (should be straightforward now)
+- [ ] separate in top 5 and top 10 for the preparation of data and plotting 
 
-serotype_contingency <- isolates %>%
-  count(Serotype, name = "n_isolates") %>%
-  arrange(desc(n_isolates)) %>%
-  mutate(is_top5 = Serotype %in% (isolates %>% count(Serotype, sort = TRUE) %>% slice_max(n, n = 5, with_ties = FALSE) %>% pull(Serotype)))
+#### top 5 variants
 
-variant_contingency <- isolates %>%
-  count(variant, ST, Serotype, name = "n_isolates") %>%
-  arrange(desc(n_isolates)) %>%
-  mutate(is_top5 = variant %in% (isolates %>% count(variant, sort = TRUE) %>% slice_max(n, n = 5, with_ties = FALSE) %>% pull(variant)))
-
-# full ST x Serotype contingency matrix (wide) - the "proper" contingency table
-st_serotype_wide <- isolates %>%
-  count(ST, Serotype, name = "n") %>%
-  pivot_wider(names_from = Serotype, values_from = n, values_fill = 0)
-
-top5_ST <- st_contingency %>% filter(is_top5)
-top5_Serotype <- serotype_contingency %>% filter(is_top5)
-top5_variant <- variant_contingency %>% filter(is_top5)
+#TODO review (after we add top 10)
+```{r grouped columns}
+top5_variants_fig7_prep <- 
+  isolates %>%
+  mutate(
+    variant_top5 = top_n_other(variant, 5, other_label = "Other"),
+    Serotype_label_variant_top5 = ifelse(variant_top5 == "Other", "Other", Serotype),
+    ST_label_variant_top5 = ifelse(variant_top5 == "Other", "Other", ST),
+  )
 ```
 
-```{r export contingency tables}
-contingency_tables <- list(
-  ST = st_contingency,
-  Serotype = serotype_contingency,
-  Variant = variant_contingency,
-  ST_x_Serotype_wide = st_serotype_wide,
-  Top5_ST = top5_ST,
-  Top5_Serotype = top5_Serotype,
-  Top5_Variant = top5_variant,
-  grouping_comparison = grouping_comparison
-)
+Now preparing data for visualisation
+```{r getting contingency table for top5 variants fig 7}
+top5_variants_fig7 <-
+  top5_variants_fig7_prep %>%
+  select(Year, variant_top5, production_type) %>%
+  group_by(Year, variant_top5, production_type) %>%
+  tally()
 
-saveRDS(contingency_tables, file.path(here::here(params$output_dir), "contingency_tables.rds"))
-write_xlsx(contingency_tables, file.path(here::here(params$output_dir), "contingency_tables.xlsx"))
+top5_variants_fig7
+write_tsv(top5_variants_fig7, file.path(here::here(params$output_dir), "fig7_top5_variant_year_production_tally.tsv"))
 ```
 
-## 1.9 Export the verified, tidy per-isolate dataset
+This is the data we use to produce the figure
 
-```{r export tidy isolates}
-isolates_tidy <- isolates %>%
-  select(
-    Sample, Year, Case, production_type, Species,
-    ST, Serotype, variant, ST_top5, ST_top5_label, Serotype_top5, variant_top5
+
+```{r figure7 top5 pie data}
+# x order: top 5 by total isolate count (desc), "Other" always last
+variant_top5_totals <- 
+  top5_variants_fig7 %>%
+  group_by(variant_top5) %>%
+  summarise(total = sum(n), .groups = "drop") %>%
+  arrange(desc(total))
+
+variant_top5_totals
+
+variant_top5_levels <- c(setdiff(variant_top5_totals$variant_top5, "Other"), "Other")
+variant_top5_levels
+
+fig7_top5_pie_data <- 
+  top5_variants_fig7 %>%
+  pivot_wider(names_from = production_type, values_from = n, values_fill = 0) %>%
+  mutate(
+    variant_top5 = factor(variant_top5, levels = variant_top5_levels),
+    x = as.numeric(variant_top5),
+    y = Year,
+    total = Broiler + `Parent flock`
   )
 
-saveRDS(isolates_tidy, file.path(here::here(params$output_dir), "isolates_tidy.rds"))
-write_xlsx(isolates_tidy, file.path(here::here(params$output_dir), "isolates_tidy.xlsx"))
+fig7_top5_pie_data 
+# area-proportional radius (not radius-proportional - r ∝ sqrt(total), so
+# doubling isolate count does not double the radius, it doubles the area)
+max_total <- max(fig7_top5_pie_data$total)
+fig7_top5_pie_data <- 
+  fig7_top5_pie_data %>%
+  mutate(r = 0.42 * sqrt(total / max_total))
 
-nrow(isolates_tidy)
+fig7_top5_pie_data
 ```
 
-# Part 2: Graph trials (draft, on verified data)
-
-Collaborators like both sankey and pie chart plots: Figure 8's alluvial
-diagrams are the Sankey-style flow charts (`ggalluvial`), Figure 7 is the
-sized-bubble chart.
-
-## Figure 7: variant composition (sized-bubble "pie" chart)
-
-Not a literal radial pie - "size of the circles proportional to isolate
-count" plus rotated *x-axis* labels means a proportional-bubble chart
-(circle area, not radius, via `scale_size_area`). On-chart label is the
-variant text only (`ST23-O78:H4`); counts and sent-case (insendelse) numbers
-go to a supplementary table instead. Top 10 variants by isolate count (the
-top5+Other bucketing from Part 1 would dilute the point of naming the common
-ones); the rest is exactly what the supplementary table is for.
-
-```{r figure7 data}
-fig7_top_n <- 10
-
-fig7_top_variants <- isolates %>%
-  count(variant, name = "n_total") %>%
-  slice_max(n_total, n = fig7_top_n, with_ties = FALSE) %>%
-  arrange(desc(n_total)) %>%
-  pull(variant)
-
-fig7_data <- isolates %>%
-  filter(variant %in% fig7_top_variants) %>%
-  count(variant, production_type, name = "n_isolates") %>%
-  mutate(variant = factor(variant, levels = rev(fig7_top_variants)))
-```
-
-```{r figure7 supplementary}
-fig7_supplementary <- isolates %>%
-  mutate(shown_in_fig7 = variant %in% fig7_top_variants) %>%
-  group_by(variant, ST, Serotype) %>%
-  summarise(
-    n_isolates = n(),
-    n_sent_cases = n_distinct(Case),
-    shown_in_fig7 = first(shown_in_fig7),
-    .groups = "drop"
-  ) %>%
-  arrange(desc(n_isolates))
-
-write_xlsx(fig7_supplementary, file.path(here::here(params$output_dir), "fig7_variant_supplementary.xlsx"))
-```
-
-```{r figure7}
-fig7 <- fig7_data %>%
-  ggplot(aes(x = variant, y = production_type, size = n_isolates, color = production_type)) +
-  geom_point(alpha = 0.75) +
-  geom_text(aes(label = variant), size = 2.4, color = "grey15", vjust = -1.6, show.legend = FALSE) +
-  scale_size_area(max_size = 22, breaks = c(10, 25, 50, 100, 200)) +
-  scale_color_manual(values = palette_qual[1:2], guide = "none") +
+```{r figure7 top5 pie}
+fig7_top5 <- 
+  ggplot() +
+  geom_scatterpie(
+    data = fig7_top5_pie_data,
+    aes(x = x, y = y, r = r),
+    cols = c("Broiler", "Parent flock"),
+    color = NA
+  ) +
+  coord_equal() +
+  scale_x_continuous(breaks = seq_along(variant_top5_levels), labels = variant_top5_levels, expand = expansion(add = 0.6)) +
+  scale_y_continuous(breaks = sort(unique(fig7_top5_pie_data$Year)), expand = expansion(add = 0.6)) +
+  scale_fill_manual(values = palette_qual[1:2], name = "Production type") +
   labs(
-    title = "Most common ST × Serotype variants",
-    subtitle = paste0("Top ", fig7_top_n, " variants by isolate count; counts and sent cases in the supplementary table, not on the chart"),
-    x = NULL, y = NULL,
-    size = "Isolates (n)\ncircle area ∝ count"
+    title = "Top 5 ST × Serotype variants, by year",
+    subtitle = "Pie = production type share; size = isolate count (area-proportional); counts in supplementary table",
+    x = NULL, y = NULL
   ) +
   theme_apec() +
   theme(
     legend.position = "right",
     axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5),
-    axis.text.y = element_text(face = "bold"),
-    panel.grid.major.x = element_blank()
+    panel.grid.major = element_blank()
   )
 
-fig7
-save_apec_plot(fig7, "fig7_variant_bubble.png", dir = params$figures_dir, width = 26, height = 12)
+fig7_top5
+save_apec_plot(fig7_top5, "fig7_top5_variant_piematrix_by_year.png", dir = params$figures_dir, width = 24, height = 16)
 ```
 
-## Figure 8: three ST × Serotype flow examples (Sankey/alluvial)
 
-Grouped to top-5 + "Other" rather than filtered by a count threshold, so
-every isolate is represented somewhere (a named stratum or "Other"), none
-dropped.
-
-### Example 1: Year → ST (top 5 + Other) → Serotype (unrestricted)
-
-Serotype is *not* bucketed here, so that axis still carries ~115 levels -
-likely to look tangled; kept as the literal example requested rather than an
-expected win.
-
-```{r figure8 example1 data}
-ex1_data <- isolates %>%
-  count(Year, ST_top5_label, Serotype, production_type, name = "n")
-
-ex1_year_order <- as.character(sort(unique(ex1_data$Year)))
-
-ex1_st_order <- ex1_data %>%
-  mutate(year_pos = match(as.character(Year), ex1_year_order)) %>%
-  group_by(ST_top5_label) %>%
-  summarise(bary = weighted.mean(year_pos, w = n), n_total = sum(n), .groups = "drop") %>%
-  arrange(bary, desc(n_total)) %>%
-  pull(ST_top5_label)
-
-ex1_serotype_order <- ex1_data %>%
-  mutate(st_pos = match(ST_top5_label, ex1_st_order)) %>%
-  group_by(Serotype) %>%
-  summarise(bary = weighted.mean(st_pos, w = n), n_total = sum(n), .groups = "drop") %>%
-  arrange(bary, desc(n_total)) %>%
-  pull(Serotype)
-
-ex1_data <- ex1_data %>%
-  mutate(
-    Year_f = factor(as.character(Year), levels = ex1_year_order),
-    ST_top5_label = factor(ST_top5_label, levels = ex1_st_order),
-    Serotype = factor(Serotype, levels = ex1_serotype_order)
-  )
-```
-
-```{r figure8 example1}
-fig8_ex1 <- ex1_data %>%
-  ggplot(aes(axis1 = Year_f, axis2 = ST_top5_label, axis3 = Serotype, y = n)) +
-  geom_alluvium(aes(fill = production_type), width = 1/5, alpha = 0.8) +
-  geom_stratum(width = 1/5, fill = "grey95", color = "grey40", linewidth = 0.25) +
-  geom_text(stat = "stratum", aes(label = after_stat(stratum)), size = 1.8) +
-  scale_x_discrete(limits = c("Year", "ST", "Serotype"), expand = c(0.08, 0.08)) +
-  scale_fill_manual(values = palette_qual[1:2]) +
-  labs(
-    title = "Example 1: Year × ST (top 5 + Other) × Serotype",
-    subtitle = "ST bucketed to top 5 + \"Other ST\"; Serotype not bucketed (~115 levels) - compare against Examples 2/3",
-    x = NULL, y = "Isolates", fill = "Production type"
-  ) +
-  theme_apec() +
-  theme(panel.grid = element_blank(), axis.text.y = element_blank(), legend.position = "bottom")
-
-fig8_ex1
-save_apec_plot(fig8_ex1, "fig8_example1_year_st5_serotype.png", dir = params$figures_dir, width = 32, height = 26)
-```
-
-### Example 2: Production type → Year → variant (top 5 + Other, kept)
-
-Combined `variant` axis instead of separate ST/Serotype axes - grouping
-strategy **C** from the comparison table (top 5 variants + "Other", 6
-categories total, ~53% of isolates in "Other" but every isolate still counted
-somewhere).
-
-```{r figure8 example2 data}
-ex2_data <- isolates %>%
-  count(production_type, Year, variant_top5, name = "n")
-
-ex2_year_order <- as.character(sort(unique(ex2_data$Year)))
-
-ex2_variant_order <- ex2_data %>%
-  mutate(year_pos = match(as.character(Year), ex2_year_order)) %>%
-  group_by(variant_top5) %>%
-  summarise(bary = weighted.mean(year_pos, w = n), n_total = sum(n), .groups = "drop") %>%
-  arrange(bary, desc(n_total)) %>%
-  pull(variant_top5)
-
-ex2_data <- ex2_data %>%
-  mutate(
-    Year_f = factor(as.character(Year), levels = ex2_year_order),
-    variant_top5 = factor(variant_top5, levels = ex2_variant_order)
-  )
-```
-
-```{r figure8 example2}
-fig8_ex2 <- ex2_data %>%
-  ggplot(aes(axis1 = production_type, axis2 = Year_f, axis3 = variant_top5, y = n)) +
-  geom_alluvium(aes(fill = production_type), width = 1/5, alpha = 0.8) +
-  geom_stratum(width = 1/5, fill = "grey95", color = "grey40", linewidth = 0.25) +
-  geom_text(stat = "stratum", aes(label = after_stat(stratum)), size = 2.0) +
-  scale_x_discrete(limits = c("Production type", "Year", "Variant"), expand = c(0.08, 0.08)) +
-  scale_fill_manual(values = palette_qual[1:2]) +
-  labs(
-    title = "Example 2: Production type × Year × Variant (top 5 + Other)",
-    subtitle = "Variant (ST-Serotype) bucketed directly to its top 5 + \"Other\" - nothing excluded",
-    x = NULL, y = "Isolates", fill = "Production type"
-  ) +
-  theme_apec() +
-  theme(panel.grid = element_blank(), axis.text.y = element_blank(), legend.position = "bottom")
-
-fig8_ex2
-save_apec_plot(fig8_ex2, "fig8_example2_production_year_variant5.png", dir = params$figures_dir, width = 30, height = 22)
-```
-
-### Example 3: Production type → ST (top 5 + Other) → Serotype (unrestricted)
-
-Same idea as Example 1, minus the year axis, production type first.
-
-```{r figure8 example3 data}
-ex3_data <- isolates %>%
-  count(production_type, ST_top5_label, Serotype, name = "n")
-
-ex3_st_order <- ex3_data %>%
-  group_by(ST_top5_label) %>%
-  summarise(n_total = sum(n), .groups = "drop") %>%
-  arrange(desc(n_total)) %>%
-  pull(ST_top5_label)
-
-ex3_serotype_order <- ex3_data %>%
-  mutate(st_pos = match(ST_top5_label, ex3_st_order)) %>%
-  group_by(Serotype) %>%
-  summarise(bary = weighted.mean(st_pos, w = n), n_total = sum(n), .groups = "drop") %>%
-  arrange(bary, desc(n_total)) %>%
-  pull(Serotype)
-
-ex3_data <- ex3_data %>%
-  mutate(
-    ST_top5_label = factor(ST_top5_label, levels = ex3_st_order),
-    Serotype = factor(Serotype, levels = ex3_serotype_order)
-  )
-```
-
-```{r figure8 example3}
-fig8_ex3 <- ex3_data %>%
-  ggplot(aes(axis1 = production_type, axis2 = ST_top5_label, axis3 = Serotype, y = n)) +
-  geom_alluvium(aes(fill = production_type), width = 1/5, alpha = 0.8) +
-  geom_stratum(width = 1/5, fill = "grey95", color = "grey40", linewidth = 0.25) +
-  geom_text(stat = "stratum", aes(label = after_stat(stratum)), size = 1.9) +
-  scale_x_discrete(limits = c("Production type", "ST", "Serotype"), expand = c(0.08, 0.08)) +
-  scale_fill_manual(values = palette_qual[1:2]) +
-  labs(
-    title = "Example 3: Production type × ST (top 5 + Other) × Serotype",
-    subtitle = "No year axis; ST bucketed to top 5 + \"Other ST\", Serotype not bucketed",
-    x = NULL, y = "Isolates", fill = "Production type"
-  ) +
-  theme_apec() +
-  theme(panel.grid = element_blank(), axis.text.y = element_blank(), legend.position = "bottom")
-
-fig8_ex3
-save_apec_plot(fig8_ex3, "fig8_example3_production_st5_serotype.png", dir = params$figures_dir, width = 30, height = 24)
-```
