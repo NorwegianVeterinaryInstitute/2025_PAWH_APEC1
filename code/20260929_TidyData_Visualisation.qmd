@@ -382,12 +382,15 @@ variant_top5_totals
 variant_top5_levels <- c(setdiff(variant_top5_totals$variant_top5, "Other"), "Other")
 variant_top5_levels
 
-fig7_top5_pie_data <- 
+x_spacing <- 1.7  # > 1 spaces the variant columns further apart, widening the
+                  # plot; coord_equal() keeps pies round regardless (spacing
+                  # is between x positions, not a change to their unit scale)
+fig7_top5_pie_data <-
   top5_variants_fig7 %>%
   pivot_wider(names_from = production_type, values_from = n, values_fill = 0) %>%
   mutate(
     variant_top5 = factor(variant_top5, levels = variant_top5_levels),
-    x = as.numeric(variant_top5),
+    x = as.numeric(variant_top5) * x_spacing,
     y = Year,
     total = Broiler + `Parent flock`
   )
@@ -403,14 +406,35 @@ fig7_top5_pie_data <-
 fig7_top5_pie_data
 ```
 
+r = 0.42 * sqrt(total / max_total)
+Computes each pie's radius. This is built to make circle area — not radius — proportional to isolate count - as humans percive circle size best by area. 
+
+<!-- Explanations:
+total / max_total → 189 / 189 = 1. This normalizes every count to a 0–1 scale, where 1 = the biggest cell in the whole dataset (whatever that happens to be — right now it's the same 189, since max_total is derived from fig7_top5_pie_data itself).
+sqrt(1) = 1. For a smaller cell, e.g. 50 isolates: sqrt(50/189) = sqrt(0.265) = 0.514 — note this is not 50/189 = 0.265; the square root pulls smaller values up relative to a straight ratio, which is exactly what's needed to compensate for area growing quadratically.
+0.42 * 1 = 0.42. The 0.42 is just a scale factor — "the biggest pie gets a radius of 0.42 data-units" — chosen by eye so the largest circle (ST23-O78:H4/2021) fits within one x/y grid cell (columns and years are 1 unit apart, so a radius approaching 0.5 would make adjacent pies touch).
+--> 
+
 ```{r figure7 top5 pie}
-# a real ggplot size legend instead of geom_scatterpie_legend() (which draws
-# plain geoms inside the panel, not a real legend, so it can't join
-# Production type's legend box or inherit its styling) - an invisible
-# geom_point layer, alpha = 0, purely to generate the "Isolate number" size
-# legend; scale_size_area() keeps it area-proportional like the real pies.
-# Both legends now live in the same legend box (theme_apec_piematrix() sets
-# legend.position = "bottom"), same row, same text styling, automatically.
+# geom_scatterpie_legend() draws its circles using the exact same r formula
+# as the real pies (data-coordinate radius), so it's correct by construction
+# regardless of output dimensions - the trade-off is it can't join the
+# Production type legend's legend box (that's a real ggplot legend, outside
+# the panel), so the closest we can get to "grouped, aligned" is positioning
+# it in its own row inside the panel, left-aligned under the data, directly
+# above where the Production type legend sits.
+legend_isolate_values <- c(10, 50, 100, round(max_total))
+legend_r_values <- 0.42 * sqrt(legend_isolate_values / max_total)
+
+# text styling pulled from theme_apec()'s actual computed legend.title/
+# axis.text, not guessed, so this matches the rest of the plot
+theme_text <- ggplot2::calc_element("legend.title", ggplot2::theme_get() + theme_apec())
+axis_text <- ggplot2::calc_element("axis.text", ggplot2::theme_get() + theme_apec())
+
+min_year <- min(fig7_top5_pie_data$y)
+legend_x <- 1
+legend_y <- min_year - 1.4
+
 fig7_top5 <-
   ggplot() +
   geom_scatterpie(
@@ -418,15 +442,25 @@ fig7_top5 <-
     aes(x = x, y = y, r = r),
     cols = c("Broiler", "Parent flock"),
     color = NA
-  ) + 
-  geom_point(data = fig7_top5_pie_data, aes(x = x, y = y, size = total), color = "grey40", alpha = 0) +
-  scale_size_area(
-    name = "Isolate number", max_size = 22, breaks = c(10, 50, 100, round(max_total)),
-    guide = guide_legend(override.aes = list(alpha = 1, shape = 21, color = "grey40", fill = "grey80"))
   ) +
-  coord_equal() + 
-  scale_x_continuous(breaks = seq_along(variant_top5_levels), labels = variant_top5_levels, expand = expansion(add = 0.6)) +
-  scale_y_continuous(breaks = sort(unique(fig7_top5_pie_data$Year)), expand = expansion(add = 0.6)) +
+  geom_scatterpie_legend(
+    fig7_top5_pie_data$r,
+    x = legend_x, y = legend_y,
+    n = length(legend_r_values),
+    breaks = legend_r_values,
+    labeller = function(r) round((r / 0.42)^2 * max_total),
+    colour = axis_text$colour, size = axis_text$size / .pt, family = axis_text$family
+  ) +
+  annotate(
+    "text",
+    x = legend_x - max(legend_r_values),
+    y = legend_y + max(legend_r_values) + 0.3,
+    label = "Isolate number",
+    hjust = 0, size = theme_text$size / .pt, color = theme_text$colour, family = theme_text$family
+  ) +
+  coord_equal() +
+  scale_x_continuous(breaks = seq_along(variant_top5_levels) * x_spacing, labels = variant_top5_levels, expand = expansion(add = 0.7)) +
+  scale_y_continuous(breaks = sort(unique(fig7_top5_pie_data$Year)), expand = expansion(add = c(2.2, 0.6))) +
   scale_fill_manual(values = palette_qual[1:2], name = "Production type") +
   labs(
     title = "Top 5 variants (ST-Serotype), by year",
@@ -439,6 +473,7 @@ save_apec_plot(fig7_top5, "fig7_top5_variant_piematrix_by_year.png", dir = param
 ```
 
 **Pie = production type share; size = isolate count (area-proportional,
-bottom legend); counts in the supplementary table above.**
+same scale as the real pies - see chunk comments); counts in the
+supplementary table above.**
 
 

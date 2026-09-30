@@ -13,6 +13,8 @@ theme_apec_piematrix <- function(base_size = 11) {
   theme_apec(base_size) +
     ggplot2::theme(
       legend.position = "bottom",
+      legend.box = "vertical",
+      legend.box.just = "left",
       axis.text = ggplot2::element_text(color = "grey30", size = ggplot2::rel(0.85)),
       axis.text.x = ggplot2::element_text(angle = 45, hjust = 1, vjust = 1),
       panel.grid.major = ggplot2::element_blank()
