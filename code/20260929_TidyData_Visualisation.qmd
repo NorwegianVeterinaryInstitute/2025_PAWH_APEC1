@@ -344,7 +344,7 @@ serotypes (85.2%) and 109 variants (81.3%).
 
 #### top 5 variants
 
-#TODO review (after we add top 10)
+
 ```{r grouped columns}
 top5_variants_fig7_prep <- 
   isolates %>%
@@ -474,3 +474,105 @@ calibrated to the real pies' scale - see chunk comments); counts in the
 supplementary table above.**
 
 
+#### top 10 variants
+
+```{r grouped columns top10}
+top10_variants_fig7_prep <-
+  isolates %>%
+  mutate(
+    variant_top10 = top_n_other(variant, 10, other_label = "Other"),
+    Serotype_label_variant_top10 = ifelse(variant_top10 == "Other", "Other", Serotype),
+    ST_label_variant_top10 = ifelse(variant_top10 == "Other", "Other", ST),
+  )
+```
+
+Now preparing data for visualisation
+```{r getting contingency table for top10 variants fig 7}
+top10_variants_fig7 <-
+  top10_variants_fig7_prep %>%
+  select(Year, variant_top10, production_type) %>%
+  group_by(Year, variant_top10, production_type) %>%
+  tally()
+
+top10_variants_fig7
+write_tsv(top10_variants_fig7, file.path(here::here(params$output_dir), "fig7_top10_variant_year_production_tally.tsv"))
+```
+
+This is the data we use to produce the figure
+
+```{r figure7 top10 pie data}
+# x order: top 10 by total isolate count (desc), "Other" always last
+variant_top10_totals <-
+  top10_variants_fig7 %>%
+  group_by(variant_top10) %>%
+  summarise(total = sum(n), .groups = "drop") %>%
+  arrange(desc(total))
+
+variant_top10_totals
+
+variant_top10_levels <- c(setdiff(variant_top10_totals$variant_top10, "Other"), "Other")
+variant_top10_levels
+
+# reuses x_spacing defined in the top 5 data chunk above
+fig7_top10_pie_data <-
+  top10_variants_fig7 %>%
+  pivot_wider(names_from = production_type, values_from = n, values_fill = 0) %>%
+  mutate(
+    variant_top10 = factor(variant_top10, levels = variant_top10_levels),
+    x = as.numeric(variant_top10) * x_spacing,
+    y = Year,
+    total = Broiler + `Parent flock`
+  )
+
+fig7_top10_pie_data
+# area-proportional radius - same r formula as top 5, explained above
+max_total_top10 <- max(fig7_top10_pie_data$total)
+fig7_top10_pie_data <-
+  fig7_top10_pie_data %>%
+  mutate(r = 0.42 * sqrt(total / max_total_top10))
+
+fig7_top10_pie_data
+```
+
+```{r figure7 top10 pie}
+# same base_plot -> measure -> calibrate legend approach as the top 5 figure
+# above; widened (55cm vs 32cm) to fit the extra variant columns (11 vs 6) -
+# check the render and adjust if there's too much/too little side padding
+fig7_top10_width_cm <- 55
+fig7_top10_height_cm <- 18
+
+base_plot_top10 <-
+  ggplot() +
+  geom_scatterpie(
+    data = fig7_top10_pie_data,
+    aes(x = x, y = y, r = r),
+    cols = c("Broiler", "Parent flock"),
+    color = NA
+  ) +
+  coord_equal() +
+  scale_x_continuous(breaks = seq_along(variant_top10_levels) * x_spacing, labels = variant_top10_levels, expand = expansion(add = 0.7)) +
+  scale_y_continuous(breaks = sort(unique(fig7_top10_pie_data$Year)), expand = expansion(add = 0.6)) +
+  scale_fill_manual(values = palette_qual[1:2], name = "Production type") +
+  labs(
+    title = "Top 10 variants (ST-Serotype), by year",
+    x = "Variant", y = "Year"
+  ) +
+  theme_apec_piematrix()
+
+mm_per_unit_top10 <- panel_mm_per_data_unit(base_plot_top10, fig7_top10_width_cm, fig7_top10_height_cm)
+legend_max_size_mm_top10 <- 2 * 0.42 * mm_per_unit_top10
+
+fig7_top10 <- base_plot_top10 +
+  geom_point(data = fig7_top10_pie_data, aes(x = x, y = y, size = total), alpha = 0) +
+  scale_size_area(
+    name = "Isolate number", max_size = legend_max_size_mm_top10, breaks = c(10, 50, 100, round(max_total_top10)),
+    guide = guide_legend(override.aes = list(alpha = 1, shape = 21, color = "grey40", fill = "grey80"))
+  )
+
+fig7_top10
+save_apec_plot(fig7_top10, "fig7_top10_variant_piematrix_by_year.png", dir = params$figures_dir, width = fig7_top10_width_cm, height = fig7_top10_height_cm)
+```
+
+**Pie = production type share; size = isolate count (area-proportional,
+calibrated to the real pies' scale - see chunk comments above); counts in the
+supplementary table above.**
