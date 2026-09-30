@@ -369,7 +369,7 @@ write_tsv(top5_variants_fig7, file.path(here::here(params$output_dir), "fig7_top
 
 This is the data we use to produce the figure
 
-
+# HERE 
 ```{r figure7 top5 pie data}
 # x order: top 5 by total isolate count (desc), "Other" always last
 variant_top5_totals <- 
@@ -437,7 +437,8 @@ fig7_height_cm <- 18
 # size as the real pies - not just at the endpoint (189), but everywhere,
 # since scale_size_area() applies the identical sqrt(value/max) transform
 # used for `r` below.
-base_plot <- ggplot() +
+base_plot <-
+  ggplot() +
   geom_scatterpie(
     data = fig7_top5_pie_data,
     aes(x = x, y = y, r = r),
