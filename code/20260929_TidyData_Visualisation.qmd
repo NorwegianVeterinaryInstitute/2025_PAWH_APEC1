@@ -58,6 +58,7 @@ library(writexl)
 library(scales)
 library(ggalluvial)
 library(scatterpie)
+library(patchwork)
 ```
 
 ```{r params for interactive sessions}
@@ -461,7 +462,7 @@ base_plot_top10 <-
     data = fig7_top10_pie_data,
     aes(x = x, y = y, r = r),
     cols = c("Broiler", "Parent flock"),
-    color = NA
+    color = "grey30", linewidth = 0.3
   ) +
   coord_equal() +
   scale_x_continuous(breaks = seq_along(variant_top10_levels) * x_spacing, labels = variant_top10_levels, expand = expansion(add = 0.7)) +
@@ -485,6 +486,230 @@ fig7_top10 <- base_plot_top10 +
 
 fig7_top10
 save_apec_plot(fig7_top10, "fig7_top10_variant_piematrix_by_year.png", dir = params$figures_dir, width = fig7_top10_width_cm, height = fig7_top10_height_cm)
+```
+
+Just to see: isolate-number (circle size) legend moved to the right, Production
+type legend left at the bottom (ggplot2 4.0's `guide_legend(position = ...)`
+lets one guide override the theme's global `legend.position` without
+touching `theme_apec_piematrix()` or the approved `fig7_top10` above).
+
+```{r figure7 top10 pie legend right test}
+fig7_top10_legend_right_test <- base_plot_top10 +
+  geom_point(data = fig7_top10_pie_data, aes(x = x, y = y, size = total), alpha = 0) +
+  scale_size_area(
+    name = "Isolate number", max_size = legend_max_size_mm_top10, breaks = c(10, 50, 100, round(max_total_top10)),
+    guide = guide_legend(position = "right", override.aes = list(alpha = 1, shape = 21, color = "grey40", fill = "grey80"))
+  )
+
+fig7_top10_legend_right_test
+save_apec_plot(fig7_top10_legend_right_test, "fig7_top10_variant_piematrix_legend_right_test.png", dir = params$figures_dir, width = fig7_top10_width_cm, height = fig7_top10_height_cm)
+```
+
+Just to see: both legends moved to the right. `legend.position = "bottom"`
+(from `theme_apec_piematrix()`) defaults to a horizontal key layout, which is
+why Broiler/Parent flock currently sit side by side - overriding to
+`legend.position = "right"` + `legend.direction = "vertical"` stacks them
+one per line instead.
+
+```{r figure7 top10 pie legend right both test}
+fig7_top10_legend_right_both_test <- base_plot_top10 +
+  geom_point(data = fig7_top10_pie_data, aes(x = x, y = y, size = total), alpha = 0) +
+  scale_size_area(
+    name = "Isolate number", max_size = legend_max_size_mm_top10, breaks = c(10, 50, 100, round(max_total_top10)),
+    guide = guide_legend(override.aes = list(alpha = 1, shape = 21, color = "grey40", fill = "grey80"))
+  ) +
+  theme(legend.position = "right", legend.box = "vertical", legend.direction = "vertical")
+
+fig7_top10_legend_right_both_test
+save_apec_plot(fig7_top10_legend_right_both_test, "fig7_top10_variant_piematrix_legend_right_both_test.png", dir = params$figures_dir, width = fig7_top10_width_cm, height = fig7_top10_height_cm)
+```
+
+Just to see, for colleagues who ask "why not the default/simple version": the
+DEFAULT way most people size bubbles is radius directly proportional to the
+count (no sqrt correction). That looks simpler, but since circle *area*
+grows with the square of the radius, it silently exaggerates differences -
+a count 2x bigger ends up looking 4x bigger (by area, i.e. by the ink a
+reader actually perceives), and a count 10x bigger looks 100x bigger. The
+sqrt-corrected version above is the one that keeps area honestly
+proportional to count; this one is the "default" with no such correction,
+shown with its own calibrated legend so the scale is visible and
+comparable.
+
+```{r figure7 top10 pie naive radius test}
+fig7_top10_pie_data_naive <-
+  fig7_top10_pie_data %>%
+  mutate(r_naive = 0.42 * (total / max_total_top10))  # no sqrt - radius directly proportional to count
+
+base_plot_top10_naive <-
+  ggplot() +
+  geom_scatterpie(
+    data = fig7_top10_pie_data_naive,
+    aes(x = x, y = y, r = r_naive),
+    cols = c("Broiler", "Parent flock"),
+    color = "grey30", linewidth = 0.3
+  ) +
+  coord_equal() +
+  scale_x_continuous(breaks = seq_along(variant_top10_levels) * x_spacing, labels = variant_top10_levels, expand = expansion(add = 0.7)) +
+  scale_y_continuous(breaks = sort(unique(fig7_top10_pie_data_naive$Year)), expand = expansion(add = 0.6)) +
+  scale_fill_manual(values = palette_qual[1:2], name = "Production type") +
+  labs(
+    title = "Top 10 variants - DEFAULT circle sizing (radius proportional to count, not area-corrected)",
+    x = "Variant", y = "Year"
+  ) +
+  theme_apec_piematrix()
+
+mm_per_unit_top10_naive <- panel_mm_per_data_unit(base_plot_top10_naive, fig7_top10_width_cm, fig7_top10_height_cm)
+legend_max_size_mm_top10_naive <- 2 * 0.42 * mm_per_unit_top10_naive
+
+fig7_top10_naive_test <- base_plot_top10_naive +
+  geom_point(data = fig7_top10_pie_data_naive, aes(x = x, y = y, size = total), alpha = 0) +
+  scale_radius(
+    name = "Isolate number", range = c(0, legend_max_size_mm_top10_naive), limits = c(0, max_total_top10),
+    breaks = c(10, 50, 100, round(max_total_top10)),
+    guide = guide_legend(override.aes = list(alpha = 1, shape = 21, color = "grey40", fill = "grey80"))
+  )
+
+fig7_top10_naive_test
+save_apec_plot(fig7_top10_naive_test, "fig7_top10_variant_piematrix_naive_radius_test.png", dir = params$figures_dir, width = fig7_top10_width_cm, height = fig7_top10_height_cm)
+```
+# Keep this one 
+Just to see: discrete size categories (1-10, 10-50, 50-100, 100-200 isolates)
+instead of a continuous scale - every pie in a category renders at the same
+radius, which makes sizes easier to compare at a glance at the cost of
+precision within a category. Still area-corrected (sqrt), just applied once
+per category instead of per exact count. Each category's radius is based on
+its upper edge, normalized against 200 (the top of the highest category)
+rather than this dataset's own max, so the 4 legend sizes stay fixed and
+don't need recalibrating if the data changes.
+
+```{r figure7 top10 pie discrete bins test}
+bin_breaks <- c(1, 10, 50, 100, 200)
+bin_labels <- c("1-10", "10-50", "50-100", "100-200")
+stopifnot("some isolate counts exceed the largest defined bin (200) - extend bin_breaks" = max_total_top10 <= 200)
+
+bin_upper <- c(10, 50, 100, 200)
+bin_radius <- 0.42 * sqrt(bin_upper / max(bin_upper))
+names(bin_radius) <- bin_labels
+
+fig7_top10_pie_data_binned <-
+  fig7_top10_pie_data %>%
+  mutate(
+    total_bin = cut(total, breaks = bin_breaks, labels = bin_labels, include.lowest = TRUE, right = FALSE),
+    r_binned = bin_radius[as.character(total_bin)]
+  )
+
+base_plot_top10_binned <-
+  ggplot() +
+  geom_scatterpie(
+    data = fig7_top10_pie_data_binned,
+    aes(x = x, y = y, r = r_binned),
+    cols = c("Broiler", "Parent flock"),
+    color = "grey30", linewidth = 0.3
+  ) +
+  coord_equal() +
+  scale_x_continuous(breaks = seq_along(variant_top10_levels) * x_spacing, labels = variant_top10_levels, expand = expansion(add = 0.7)) +
+  scale_y_continuous(breaks = sort(unique(fig7_top10_pie_data_binned$Year)), expand = expansion(add = 0.6)) +
+  scale_fill_manual(values = palette_qual[1:2], name = "Production type") +
+  labs(
+    title = "Top 10 variants - discrete size categories (area-corrected), by year",
+    x = "Variant", y = "Year"
+  ) +
+  theme_apec_piematrix()
+
+mm_per_unit_top10_binned <- panel_mm_per_data_unit(base_plot_top10_binned, fig7_top10_width_cm, fig7_top10_height_cm)
+bin_radius_mm <- 2 * bin_radius * mm_per_unit_top10_binned  # diameter in mm, same convention as the continuous legends above
+names(bin_radius_mm) <- bin_labels
+
+fig7_top10_binned_test <- base_plot_top10_binned +
+  geom_point(data = fig7_top10_pie_data_binned, aes(x = x, y = y, size = total_bin), alpha = 0) +
+  scale_size_manual(
+    name = "Isolate number", values = bin_radius_mm, drop = FALSE,
+    guide = guide_legend(override.aes = list(alpha = 1, shape = 21, color = "grey40", fill = "grey80"))
+  )
+
+fig7_top10_binned_test
+save_apec_plot(fig7_top10_binned_test, "fig7_top10_variant_piematrix_discrete_bins_test.png", dir = params$figures_dir, width = fig7_top10_width_cm, height = fig7_top10_height_cm)
+```
+
+#### Example 2 - horizontal bars (just to compare)
+
+Same single-panel grid as the pie matrix above (x = variant position, y =
+Year, reusing `x`/`y` from `fig7_top10_pie_data`) - not facets. Each cell is
+one horizontal bar starting at the variant's x position, extending right by
+isolate count, stacked Broiler then Parent flock. No `coord_equal()` needed
+here (bars don't need to stay circular), so a bar's length-to-count ratio is
+correct in data-units regardless of render size - but `geom_rect()`'s width
+still isn't a native ggplot "size" aesthetic, so there's no automatic legend
+for it either. A small reference-bar legend is hand-drawn below the grid,
+at the same scale as the real bars.
+
+```{r figure7 top10 bars example 2}
+bar_height <- 0.6  # vertical thickness of each bar, in y data-units (Year rows are 1 unit apart)
+max_bar_length <- x_spacing * 0.8  # leaves a margin before the next variant column
+len_per_isolate <- max_bar_length / max_total_top10  # linear: length is honestly proportional to count
+
+fig7_top10_bars_data <-
+  fig7_top10_pie_data %>%
+  select(Year, variant_top10, x, y, Broiler, `Parent flock`) %>%
+  pivot_longer(cols = c(Broiler, `Parent flock`), names_to = "production_type", values_to = "n") %>%
+  mutate(production_type = factor(production_type, levels = c("Broiler", "Parent flock"))) %>%
+  arrange(Year, variant_top10, production_type) %>%
+  group_by(Year, variant_top10) %>%
+  mutate(
+    len = n * len_per_isolate,
+    xmax = x + cumsum(len),
+    xmin = xmax - len
+  ) %>%
+  ungroup()
+
+# reference legend drawn in the SAME panel/coordinate system as the real
+# bars (not a separate patchwork panel - that decoupled both the x scale
+# AND the y scale, so neither bar length nor bar height matched the real
+# ones). Placed one column-slot to the right of the last variant instead of
+# below the Year rows, so it can't collide with the rotated x-axis labels,
+# while guaranteeing identical length-per-isolate and identical bar_height
+# since it's literally the same axes.
+legend_x0 <- (length(variant_top10_levels) + 1) * x_spacing
+legend_counts <- c(10, 50, 100, round(max_total_top10))
+legend_data <- tibble(
+  count = legend_counts,
+  xmin = legend_x0,
+  xmax = legend_x0 + legend_counts * len_per_isolate,
+  y = max(fig7_top10_bars_data$Year) - (seq_along(legend_counts) - 1) * bar_height * 1.8
+)
+legend_right_margin <- (max(legend_data$xmax) - length(variant_top10_levels) * x_spacing) + 0.3
+
+fig7_top10_bars <-
+  ggplot() +
+  geom_rect(
+    data = fig7_top10_bars_data,
+    aes(xmin = xmin, xmax = xmax, ymin = y - bar_height / 2, ymax = y + bar_height / 2, fill = production_type)
+  ) +
+  geom_rect(
+    data = legend_data,
+    aes(xmin = xmin, xmax = xmax, ymin = y - bar_height / 2, ymax = y + bar_height / 2),
+    fill = "grey70", color = "grey40", linewidth = 0.2
+  ) +
+  geom_text(
+    data = legend_data,
+    aes(x = xmax, y = y, label = count), hjust = -0.2, size = 3, color = "grey30"
+  ) +
+  annotate("text", x = legend_x0, y = max(legend_data$y) + bar_height * 1.5,
+           label = "Isolate number", hjust = 0, size = 3, color = "grey30", fontface = "bold") +
+  scale_x_continuous(
+    breaks = seq_along(variant_top10_levels) * x_spacing, labels = variant_top10_levels,
+    expand = expansion(add = c(0.7, legend_right_margin))
+  ) +
+  scale_y_continuous(breaks = sort(unique(fig7_top10_bars_data$Year)), expand = expansion(add = 0.6)) +
+  scale_fill_manual(values = palette_qual[1:2], name = "Production type") +
+  labs(
+    title = "Top 10 variants (ST-Serotype), by year - horizontal bars (example 2)",
+    x = "Variant", y = "Year"
+  ) +
+  theme_apec_piematrix()
+
+fig7_top10_bars
+save_apec_plot(fig7_top10_bars, "fig7_top10_variant_barmatrix_by_year_example2.png", dir = params$figures_dir, width = 55, height = 22)
 ```
 
 **Pie = production type share; size = isolate count (area-proportional,
