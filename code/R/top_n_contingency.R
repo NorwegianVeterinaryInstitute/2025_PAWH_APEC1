@@ -1,8 +1,10 @@
 #' Contingency counts for the top-N values of one column vs. other columns
-#'
+#' @evfi 20261005 ok
 #' Recodes `group_col` in `data` to its top `top_n` most frequent values +
 #' `other_label` (via `top_n_other()`), then cross-tabulates isolate counts
-#' against each column named in `other_cols`. Long/tidy output so any number
+#' against each column named in `other_cols`. 
+#' 
+#' Long/tidy output so any number
 #' of cross variables, and any top-N threshold, work without rewriting the
 #' query - e.g. "if I keep the top 5 variants, which ST/Serotype values show
 #' up, and how many isolates each" is one call instead of one hand-written
@@ -22,12 +24,13 @@
 #'   as `other_col`/`other_value` - plus `n_isolates`.
 top_n_contingency <- function(data, group_col, top_n, other_cols, other_label = "Other") {
 
-  # return the top n of the group and recode the rest as other
+  # return the top n of the group and recode the rest of the grouping value as other
   group_recoded <- top_n_other(data[[group_col]], top_n, other_label = other_label)
 
   # for each column in other_cols, build its own contingency table (one data
   # frame per column), then stack all of those data frames into one, on top
-  # of each other (row-bind) 
+  # of each other (row-bind)
+  # so we know how many eg. serotypes or ST are represented if grouping is variant. 
   other_cols %>%
     purrr::map(function(col) {
       tibble::tibble(

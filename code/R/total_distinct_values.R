@@ -1,5 +1,5 @@
 #' Total number of distinct values per column, across a data frame
-#'
+#' @evfi 20261005 ok
 #' Companion to `top_n_contingency()`/`summarise_contingency()`: their
 #' `n_distinct_values` is only meaningful next to "distinct out of how many
 #' overall" - this computes that denominator once per column, up front.

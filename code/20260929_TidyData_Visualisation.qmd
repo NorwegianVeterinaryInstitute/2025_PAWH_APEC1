@@ -38,9 +38,9 @@ Verified Folder code/R/viz
 
 Verified Folder code/R
 - [x] check_spelling_homogeneity.R [will have to do manual check also]
-- [ ] grouping_helpers.R
+- [x] top_n_other.R (rename from grouping_helpers.R)
 - [x] my_summary_fun.R (was my own function-reused)
-- [ ] top_n_contingency.R
+- [x] top_n_contingency.R
 - [ ] summarise_contingency.R
 - [ ] kept_vs_other.R
 - [ ] total_distinct_values.R
@@ -159,7 +159,9 @@ stopifnot(
 )
 ```
 
-> 884 rows  - and all distinct samples - no missing data
+::: {.callout-note title="data completeness"}
+884 rows  - and all distinct samples - no missing data
+:::
 
 ### 1.2.2 Category spelling / homogeneity check
 
@@ -287,15 +289,23 @@ head(count(isolates, variant, sort = TRUE), 5)
 
 ## 1.6 ST, Serotype, variant contingency tables evaluation - top 5 / top 10
 
-Same question, two groupings: keep the top N *variants*, how many distinct
-ST/Serotype does that represent; keep the top N *ST*s instead, how many
-distinct Serotype/variant. Same `top_n_contingency()` +
+> preparation for data visualisation: 
+
+Same question, two groupings: 
+- keep the top N *variants*, how many distinct ST/Serotype does that represent
+- keep the top N *ST*s instead, how many
+distinct Serotype/variant. 
+
+Same `top_n_contingency()` +
 `summarise_contingency()` pattern for both, just a different `group_col` /
-`other_cols` - shared helpers (`kept_vs_other()`, `total_distinct_values()`,
-`add_proportions()`, all in `code/R/`) do the rest, one subsection each.
+`other_cols` 
+
+- shared helpers (`kept_vs_other()`, `total_distinct_values()`,
+`add_proportions()`, all in `code/R/`) 
 
 ```{r contingency helpers}
 # how many distinct values of ST/Serotype/variant exist overall, to turn
+
 # n_distinct_values (below) into a percentage of "how much of the diversity"
 total_distinct <- total_distinct_values(isolates, c("ST", "Serotype", "variant"))
 total_distinct
@@ -303,8 +313,12 @@ total_distinct
 
 ### Grouped by variant
 
+> to see at which level we need to group for the figures 
+
 ```{r top n variant contingency}
 variant_contingency_top5 <- top_n_contingency(isolates, "variant", top_n = 5, other_cols = c("ST", "Serotype"))
+
+
 variant_contingency_top10 <- top_n_contingency(isolates, "variant", top_n = 10, other_cols = c("ST", "Serotype"))
 
 variant_threshold_summary <- bind_rows(
@@ -313,25 +327,22 @@ variant_threshold_summary <- bind_rows(
 ) %>%
   add_proportions(total_distinct, nrow(isolates))
 
-write_tsv(variant_threshold_summary, file.path(here::here(params$output_dir), "variant_threshold_summary.tsv"))
+write_tsv(variant_threshold_summary, file.path(here::here(params$output_dir), "variant_grouping_threshold_summary.tsv"))
 
 variant_threshold_summary
 ```
 
-Reading this: keeping the top 5 variants covers 417/884 isolates (47.2%) but
-names only 5/88 STs (5.7%) and 5/115 serotypes (4.3%) - the "other" bucket is
-the minority of isolates (467, 52.8%) yet holds nearly all of the diversity
-(97.7% of STs, 99.1% of serotypes). Top 10 covers more isolates (550/884,
-62.2%) at a similar diversity trade-off - 8 STs (9.1%) and 10 serotypes
-(8.7%) named, 94.3%/95.7% still in "other". Neither threshold captures much
-ST/Serotype diversity - that's inherent to a "top N" cut on data this skewed
-(one variant, ST23-O78:H4, is 244/884 isolates - 27.6% - on its own), not a
-flaw in the threshold choice.
+- keeping the top 5 variants covers 417/884 isolates (47.2%) but
+names only 5/88 STs (5.7%) and 5/115 serotypes (4.3%) - the "other" bucket is the minority of isolates (467, 52.8%) yet holds nearly all of the diversity (97.7% of STs, 99.1% of serotypes). 
+
+- Top 10 covers more isolates (550/884,
+62.2%) at a similar diversity trade-off - 8 STs (9.1%) and 10 serotypes (8.7%) named, 94.3%/95.7% still in "other". Neither threshold captures much ST/Serotype diversity - that's inherent to a "top N" cut on data this skewed (one variant, ST23-O78:H4, is 244/884 isolates - 27.6% - on its own), not a flaw in the threshold choice.
 
 ### Grouped by ST
 
 ```{r top n ST contingency}
 ST_contingency_top5 <- top_n_contingency(isolates, "ST", top_n = 5, other_cols = c("Serotype", "variant"))
+
 ST_contingency_top10 <- top_n_contingency(isolates, "ST", top_n = 10, other_cols = c("Serotype", "variant"))
 
 ST_threshold_summary <- bind_rows(
@@ -340,174 +351,30 @@ ST_threshold_summary <- bind_rows(
 ) %>%
   add_proportions(total_distinct, nrow(isolates))
 
-write_tsv(ST_threshold_summary, file.path(here::here(params$output_dir), "ST_threshold_summary.tsv"))
+write_tsv(ST_threshold_summary, file.path(here::here(params$output_dir), "ST_grouping_threshold_summary.tsv"))
 
 ST_threshold_summary
 ```
 
-Reading this: grouping by ST instead captures more diversity per isolate,
-because one ST can carry several different serotypes. Top 5 STs cover
-505/884 isolates (57.1%) and represent 18/115 serotypes (15.7%) and 19/134
-variants (14.2%) - roughly 3-4x the serotype/variant coverage of the top-5
-*variant* grouping, for a similar isolate share. "Other" (379 isolates,
-42.9%) still holds most of the diversity (103 serotypes, 89.6%; 115
-variants, 85.8%). Top 10 STs: 645/884 isolates (73.0%), 23 serotypes (20.0%),
-25 variants (18.7%) named; 239 other isolates (27.0%) still cover 98
-serotypes (85.2%) and 109 variants (81.3%).
+Grouping by ST instead captures more diversity per isolate,
+because one ST can carry several different serotypes. 
+- Top 5 STs cover 505/884 isolates (57.1%) and represent 18/115 serotypes (15.7%) and 19/134 variants (14.2%) - roughly 3-4x the serotype/variant coverage of the top-5 *variant* grouping, for a similar isolate share. "Other" (379 isolates,
+42.9%) still holds most of the diversity (103 serotypes, 89.6%; 115 variants, 85.8%). 
+
+- Top 10 STs: 645/884 isolates (73.0%), 23 serotypes (20.0%),
+25 variants (18.7%) named; 239 other isolates (27.0%) still cover 98 serotypes (85.2%) and 109 variants (81.3%).
 
 ## Preparing for figures 
 
-### Fig 7 - Pie Matrix 
-- [ ] remove the number isolates / cases
-- [ ] pie size proportional to isolate count 
-- [ ] number of isolates / and send cases text removed - will be refered in the suplementary -> export this as tsv table then
-- [ ] Legend for the size of the circles (try right first)
-- [ ] Try to move the legend on the right size and make more vertical the x label 
-- [ ] X axis = variants - want it to say ST23-O78:H4  (should be straightforward now)
-- [ ] separate in top 5 and top 10 for the preparation of data and plotting 
+### Fig 7 - Pie Matrix - top 10 variants choosen. 
 
-#### top 5 variants
-
-
-```{r grouped columns}
-top5_variants_fig7_prep <- 
-  isolates %>%
-  mutate(
-    variant_top5 = top_n_other(variant, 5, other_label = "Other"),
-    Serotype_label_variant_top5 = ifelse(variant_top5 == "Other", "Other", Serotype),
-    ST_label_variant_top5 = ifelse(variant_top5 == "Other", "Other", ST),
-  )
-```
-
-Now preparing data for visualisation
-```{r getting contingency table for top5 variants fig 7}
-top5_variants_fig7 <-
-  top5_variants_fig7_prep %>%
-  select(Year, variant_top5, production_type) %>%
-  group_by(Year, variant_top5, production_type) %>%
-  tally()
-
-top5_variants_fig7
-write_tsv(top5_variants_fig7, file.path(here::here(params$output_dir), "fig7_top5_variant_year_production_tally.tsv"))
-```
-
-This is the data we use to produce the figure
-
-
-```{r figure7 top5 pie data}
-# x order: top 5 by total isolate count (desc), "Other" always last
-variant_top5_totals <- 
-  top5_variants_fig7 %>%
-  group_by(variant_top5) %>%
-  summarise(total = sum(n), .groups = "drop") %>%
-  arrange(desc(total))
-
-variant_top5_totals
-
-variant_top5_levels <- c(setdiff(variant_top5_totals$variant_top5, "Other"), "Other")
-variant_top5_levels
-
-x_spacing <- 1.7  # > 1 spaces the variant columns further apart, widening the
-                  # plot; coord_equal() keeps pies round regardless (spacing
-                  # is between x positions, not a change to their unit scale)
-fig7_top5_pie_data <-
-  top5_variants_fig7 %>%
-  pivot_wider(names_from = production_type, values_from = n, values_fill = 0) %>%
-  mutate(
-    variant_top5 = factor(variant_top5, levels = variant_top5_levels),
-    x = as.numeric(variant_top5) * x_spacing,
-    y = Year,
-    total = Broiler + `Parent flock`
-  )
-
-fig7_top5_pie_data 
-# area-proportional radius (not radius-proportional - r ∝ sqrt(total), so
-# doubling isolate count does not double the radius, it doubles the area)
-max_total <- max(fig7_top5_pie_data$total)
-fig7_top5_pie_data <- 
-  fig7_top5_pie_data %>%
-  mutate(r = 0.42 * sqrt(total / max_total))
-
-fig7_top5_pie_data
-```
-
-r = 0.42 * sqrt(total / max_total)
-Computes each pie's radius. This is built to make circle area — not radius — proportional to isolate count - as humans percive circle size best by area. 
-
-<!-- Explanations:
-total / max_total → 189 / 189 = 1. This normalizes every count to a 0–1 scale, where 1 = the biggest cell in the whole dataset (whatever that happens to be — right now it's the same 189, since max_total is derived from fig7_top5_pie_data itself).
-sqrt(1) = 1. For a smaller cell, e.g. 50 isolates: sqrt(50/189) = sqrt(0.265) = 0.514 — note this is not 50/189 = 0.265; the square root pulls smaller values up relative to a straight ratio, which is exactly what's needed to compensate for area growing quadratically.
-0.42 * 1 = 0.42. The 0.42 is just a scale factor — "the biggest pie gets a radius of 0.42 data-units" — chosen by eye so the largest circle (ST23-O78:H4/2021) fits within one x/y grid cell (columns and years are 1 unit apart, so a radius approaching 0.5 would make adjacent pies touch).
---> 
-
-```{r figure7 top5 pie}
-# save dimensions - fixed here (not just passed to save_apec_plot below)
-# because the legend calibration two steps down needs to know the exact
-# physical size the panel will render at; if these change, the plot must be
-# rebuilt (calibrate -> plot) for the legend to stay correct - they can't
-# drift apart since both read from the same two variables.
-fig7_width_cm <- 32
-fig7_height_cm <- 18
-
-# the real pies (below) already carry a correct, data-coordinate radius (r).
-# For the "Isolate number" legend we want a REAL ggplot legend (so it joins
-# Production type's legend box, positioned automatically) - but a real
-# legend's `size` aesthetic is in mm, an entirely different unit system from
-# `r`'s data-coordinates, with no fixed relationship between them. Fix: render
-# the plot once off-screen at its real save size, measure how many mm one
-# data-unit actually occupies in the rendered, coord_equal() panel
-# (panel_mm_per_data_unit(), code/R/viz/), and use that to calibrate
-# scale_size_area()'s max_size so the legend's circles are the same physical
-# size as the real pies - not just at the endpoint (189), but everywhere,
-# since scale_size_area() applies the identical sqrt(value/max) transform
-# used for `r` below.
-base_plot <-
-  ggplot() +
-  geom_scatterpie(
-    data = fig7_top5_pie_data,
-    aes(x = x, y = y, r = r),
-    cols = c("Broiler", "Parent flock"),
-    color = NA
-  ) +
-  coord_equal() +
-  scale_x_continuous(breaks = seq_along(variant_top5_levels) * x_spacing, labels = variant_top5_levels, expand = expansion(add = 0.7)) +
-  scale_y_continuous(breaks = sort(unique(fig7_top5_pie_data$Year)), expand = expansion(add = 0.6)) +
-  scale_fill_manual(values = palette_qual[1:2], name = "Production type") +
-  labs(
-    title = "Top 5 variants (ST-Serotype), by year",
-    x = "Variant", y = "Year"
-  ) +
-  theme_apec_piematrix()
-
-mm_per_unit <- panel_mm_per_data_unit(base_plot, fig7_width_cm, fig7_height_cm)
-legend_max_size_mm <- 2 * 0.42 * mm_per_unit  # 0.42 = the real pies' max radius (see 1.6/data chunk above)
-
-fig7_top5 <- base_plot +
-  geom_point(data = fig7_top5_pie_data, aes(x = x, y = y, size = total), alpha = 0) +
-  scale_size_area(
-    name = "Isolate number", max_size = legend_max_size_mm, breaks = c(10, 50, 100, round(max_total)),
-    guide = guide_legend(override.aes = list(alpha = 1, shape = 21, color = "grey40", fill = "grey80"))
-  )
-
-fig7_top5
-save_apec_plot(fig7_top5, "fig7_top5_variant_piematrix_by_year.png", dir = params$figures_dir, width = fig7_width_cm, height = fig7_height_cm)
-```
-
-**Pie = production type share; size = isolate count (area-proportional,
-calibrated to the real pies' scale - see chunk comments); counts in the
-supplementary table above.**
-
-
-#### top 10 variants
 
 ```{r grouped columns top10}
 top10_variants_fig7_prep <-
   isolates %>%
   mutate(
-    variant_top10 = top_n_other(variant, 10, other_label = "Other"),
-    Serotype_label_variant_top10 = ifelse(variant_top10 == "Other", "Other", Serotype),
-    ST_label_variant_top10 = ifelse(variant_top10 == "Other", "Other", ST),
-  )
+    variant_top10 = top_n_other(variant, 10, other_label = "Other")
+  ) 
 ```
 
 Now preparing data for visualisation
@@ -519,7 +386,7 @@ top10_variants_fig7 <-
   tally()
 
 top10_variants_fig7
-write_tsv(top10_variants_fig7, file.path(here::here(params$output_dir), "fig7_top10_variant_year_production_tally.tsv"))
+write_tsv(top10_variants_fig7, file.path(here::here(params$output_dir), "data_pie_fig_top10_variant_year_production_tally.tsv"))
 ```
 
 This is the data we use to produce the figure
@@ -537,7 +404,11 @@ variant_top10_totals
 variant_top10_levels <- c(setdiff(variant_top10_totals$variant_top10, "Other"), "Other")
 variant_top10_levels
 
-# reuses x_spacing defined in the top 5 data chunk above
+# spacinf the variant columns y7(> 1)
+x_spacing <- 1.7  
+# plot; coord_equal() keeps pies round regardless (spacing
+# is between x positions, not a change to their unit scale)
+
 fig7_top10_pie_data <-
   top10_variants_fig7 %>%
   pivot_wider(names_from = production_type, values_from = n, values_fill = 0) %>%
