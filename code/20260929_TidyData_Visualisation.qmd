@@ -401,6 +401,7 @@ variant_top10_totals <-
 
 variant_top10_totals
 
+# reorganizing the levels so "Other" appears last
 variant_top10_levels <- c(setdiff(variant_top10_totals$variant_top10, "Other"), "Other")
 variant_top10_levels
 
@@ -411,7 +412,9 @@ x_spacing <- 1.7
 
 fig7_top10_pie_data <-
   top10_variants_fig7 %>%
-  pivot_wider(names_from = production_type, values_from = n, values_fill = 0) %>%
+  # long format
+  pivot_wider(names_from = production_type, values_from = n, values_fill = 0) %>%  
+  # We need to compute the x position of each variant function level to allow for the added x spacing
   mutate(
     variant_top10 = factor(variant_top10, levels = variant_top10_levels),
     x = as.numeric(variant_top10) * x_spacing,
@@ -420,7 +423,12 @@ fig7_top10_pie_data <-
   )
 
 fig7_top10_pie_data
-# area-proportional radius - same r formula as top 5, explained above
+```
+
+We use area-proportional radius (not radius-proportional) - formula explained below.
+
+
+```{r figure7 top10 pie data radius}
 max_total_top10 <- max(fig7_top10_pie_data$total)
 fig7_top10_pie_data <-
   fig7_top10_pie_data %>%
@@ -428,6 +436,17 @@ fig7_top10_pie_data <-
 
 fig7_top10_pie_data
 ```
+
+r = 0.42 * sqrt(total / max_total)
+Computes each pie's radius. This is built to make circle area — not radius — proportional to isolate count - as humans perceive circle size best by area.
+
+
+
+<!-- Explanations:
+total / max_total → normalizes every count to a 0–1 scale, where 1 = the biggest cell in the whole dataset (whatever that happens to be, since max_total is derived from fig7_top10_pie_data itself).
+sqrt(x) pulls smaller values up relative to a straight ratio - e.g. a cell with 1/4 of max_total's count does not get 1/4 the radius, it gets 1/2 (sqrt(0.25) = 0.5) - which is exactly what's needed to compensate for area growing quadratically with radius.
+0.42 * sqrt(...) - the 0.42 is just a scale factor - "the biggest pie gets a radius of 0.42 data-units" - chosen by eye so the largest circle fits within one x/y grid cell (columns and years are 1 unit apart, so a radius approaching 0.5 would make adjacent pies touch).
+-->
 
 ```{r figure7 top10 pie}
 # same base_plot -> measure -> calibrate legend approach as the top 5 figure
