@@ -60,7 +60,10 @@ Top5 -> Apec Variants
 
 #### First example: 
 - same year ST and serotype
-- only include the top 5 ST and "other box"
+- only include the top 5 ST and "other box" for ST
+
+
+
 
 ### Second example: 
 - have first production type then year then APEC variant : combination ST and serotype 
