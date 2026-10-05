@@ -3,12 +3,12 @@ title: "Tidy data verification & visualisation"
 author: "Eve Zeyl Fiskebeck"
 date: "`r format(Sys.time(), '%d %B, %Y')`"
 params:
-    results_xlsx: "results/Results_130226_SSM.xlsx"
+    results_xlsx: "data/Results_130226_SSM.xlsx"
     isolate_sheet: "APEC_driftsformsjekk_120226 (2)"
     source_code: 'code/R'
     source_viz: 'code/R/viz'
-    output_dir: "results/202609_data_output"
-    figures_dir: "results/figures/202609_draft"
+    output_dir: "results/tables/20261005"
+    figures_dir: "results/figures/20261005"
 execute:
   echo: false
   cache: false
@@ -20,25 +20,26 @@ knitr:
 editor_options:
   chunk_output_type: console
 ---
-<!--
-Requested in notes/20260929_updates_requested.md, scoped against the goals in notes/20260730_Distribution_visualisation.md.
 
-Source of truth for the raw import: results/Results_130226_SSM.xlsx, sheet "APEC_driftsformsjekk_120226 (2)"
--->
+**Disclaimer:**
 
-Disclaimer: This quarto document - and code has been written by Antrhopic Claude Sonnet - and has been edited and verified by Eve Fiskebeck.
+In this quarto document : 
+- Most of the code has been written by Antrhopic Claude Sonnet
+- and has been edited and verified by Eve Fiskebeck (@evfi - date).
+
+**Verification checklist:**   
 
 Verified Folder code/R/viz
-- [ ] palette_qual.R
+- [x] palette_qual.R
 - [ ] save_apec_plot.R
 - [ ] theme_apec.R
 - [ ] theme_apec_piematrix.R
 - [ ] panel_mm_per_data_unit.R
 
 Verified Folder code/R
-- [ ] check_spelling_homogeneity.R [will have to do manual check also]
+- [x] check_spelling_homogeneity.R [will have to do manual check also]
 - [ ] grouping_helpers.R
-- [ ] my_summary_fun.R
+- [x] my_summary_fun.R (was my own function-reused)
 - [ ] top_n_contingency.R
 - [ ] summarise_contingency.R
 - [ ] kept_vs_other.R
@@ -74,6 +75,7 @@ if (!exists("params")) {
 ```
 
 ```{r source reused functions}
+# Allows sourcing functions
 fun_files_path <- c(
   list.files(here::here(params$source_code), pattern = "*.R$", full.names = TRUE),
   list.files(here::here(params$source_viz), pattern = "*.R$", full.names = TRUE)
@@ -82,6 +84,7 @@ sapply(fun_files_path, source, .GlobalEnv)
 ```
 
 ```{r output dirs}
+# creating output directories if they do not exist
 if (!dir.exists(here::here(params$output_dir))) {
   dir.create(here::here(params$output_dir), recursive = TRUE)
 }
@@ -94,19 +97,20 @@ if (!dir.exists(here::here(params$figures_dir))) {
 
 ## 1.1 Data import
 
-Keep only Sample id plus what verification, grouping and Part 2's figures
-actually use - `ST`/`Serotype` renamed and coerced to character here so
-nothing downstream touches the raw `mlst_scheme_list/sequence_type` /
-`SeroTypeFinder/SeroType` names again.
+Process
+- Keep only data we will use - then tidy/wrangle data incl. for filtering and verification
+- kept : `Sample` for eventual verification and variables for grouping for figures: 
+    - `ST`/`Serotype` renamed and coerced to character here so nothing downstream touches the raw `mlst_scheme_list/sequence_type` / `SeroTypeFinder/SeroType` names.
+    - `Production` type (driftsformnavn), `Species` host (artnavn), `Year` and `Case` (sak) to be able to know the number of cases registred. 
+    - I only used the excel sheet `APEC_driftsformsjekk_120226 (2)` of the excel file: `Results_130226_SSM.xlsx`
 
-A note: I only verified/asked questions for the spelling and re-encoding - for the fields that are included in the downstream figures (or kept in this data)
-ST, Serotype, Production, Species
 
 ```{r load data}
 isolates_raw <- read_excel(
   here::here(params$results_xlsx),
   sheet = params$isolate_sheet
 ) %>%
+  # keeping only relevant columns
   select(
     Sample, Year, 
     Case = sak,
@@ -115,14 +119,19 @@ isolates_raw <- read_excel(
     Production = driftsformnavn,
     Species = artnavn
   ) %>%
-  mutate(ST = as.character(ST))
+  mutate(ST = as.character(ST), Year = as.integer(Year))
 ```
 
+<!-- types verification
+ok 
 ```{r initial glimpse}
 glimpse(isolates_raw)
 ```
+--> 
 
-## 1.2 Completeness checks
+## 1.2 Data verification
+
+### 1.2.1 Completeness check:
 
 One row per isolate, and the fields every downstream figure depends on
 (year, ST, serotype, production type) must be complete.
@@ -150,8 +159,9 @@ stopifnot(
 )
 ```
 
-## 1.3 Category spelling / homogeneity check
+> 884 rows  - and all distinct samples - no missing data
 
+### 1.2.2 Category spelling / homogeneity check
 
 `check_spelling_homogeneity()` flags pairs of values in a column that are
 identical after trimming/casefolding ("case_or_whitespace" - safe to
@@ -163,6 +173,8 @@ Tolerance differs by column: `Production`/`Species` are free text, so a
 `Serotype` are nomenclature codes where a 1-character difference is usually a
 genuinely different code (`O1:H4` vs. `O1:H7`), so only exact
 case/whitespace collisions are flagged (`max_dist = 0`).
+Moreover those should be automatically assigned so it should not be any errors
+
 
 ```{r spelling checks}
 spelling_flags <- bind_rows(
@@ -178,12 +190,16 @@ spelling_flags
 write_csv(spelling_flags, file.path(here::here(params$output_dir), "spelling_flags.csv"))
 ```
 
-Findings, fixed below: `Production` has a known mojibake artifact
+- problems reading norwegian special characters - got corrupted sometimes
+> This is why data usually does not use special characters - this simplifies the work. 
+
+- fixed below: `Production` has a known mojibake artifact
 ("Foreldredyr, kjøttproduksjon" vs. corrupted "Foreldredyr,
-kj�ttproduksjon", 2 rows); `Species` has one genuine case duplicate
-("Rowan ranger" vs. "Rowan Ranger" - the other near-neighbours are real,
-distinct breed names and are correctly not flagged); `ST`/`Serotype` have
-nothing flagged.
+kj�ttproduksjon", 2 rows)
+- `Species` has one genuine case duplicate
+("Rowan ranger" vs. "Rowan Ranger" 
+- the other near-neighbours are real, distinct breed names and are correctly not flagged)
+- `ST`/`Serotype` have nothing flagged. (expected given code ! - Trivial)
 
 ```{r fix flagged values}
 isolates_fixed <- isolates_raw %>%
@@ -191,20 +207,28 @@ isolates_fixed <- isolates_raw %>%
     Production = if_else(
       Production == "Foreldredyr, kj�ttproduksjon",
       "Foreldredyr, kjøttproduksjon",
-      Production)
-    )
+      Production),
+    Species = if_else(
+      Species == "Rowan Ranger",
+      "Rowan ranger",
+      Species)
+    ) 
 ```
 
-
-<!-- ok asked the questions for recoding
-
-Additional manual check of the spelling 
-
+Manual verification
 ```{r verifying spelling, eval=FALSE}
 my_summary_fun(isolates_fixed, Sample) %>%
   write_csv(file.path(here::here(params$output_dir), "manual_check.csv"))
 ```
--->
+
+
+::: {.callout-important title="Asked questions / decisions (Solveig)"}
+- ONT and HNT kept as is - same for the multiple serotypes with /- see bellow for Species grouping - also decided (Solveig)
+
+**Categories species grouping/renaming:**
+- "Hubbard JA 787" as "Hubbard"
+- "Ross" as "Ross 308"
+:::
 
 ## 1.4 Cleaning: production type (broiler / parent flock)
 And transforming Norwegian to English 

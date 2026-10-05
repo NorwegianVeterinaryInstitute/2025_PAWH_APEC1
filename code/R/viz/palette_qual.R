@@ -1,5 +1,5 @@
 #' Okabe-Ito colorblind-safe qualitative palette
-#'
+#' @evfi verified 2024-06-05
 #' Shared categorical color scale for APEC1 visualisations - use in a fixed
 #' order (`palette_qual[1:n]`), never cycled or reassigned per subgroup.
 #'
