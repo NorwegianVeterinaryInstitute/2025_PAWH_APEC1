@@ -7,8 +7,8 @@ params:
     isolate_sheet: "APEC_driftsformsjekk_120226 (2)"
     source_code: 'code/R'
     source_viz: 'code/R/viz'
-    output_dir: "results/tables/20261005"
-    figures_dir: "results/figures/20261005"
+    output_dir: "results/tables/20261009"
+    figures_dir: "results/figures/20261009"
 execute:
   echo: false
   cache: false
@@ -239,11 +239,11 @@ And transforming Norwegian to English
 isolates <- isolates_fixed %>%
   mutate(
     production_type = case_when(
-      str_starts(Production, "Foreldredyr") ~ "Parent flock",
+      str_starts(Production, "Foreldredyr") ~ "Parent",
       Production == "Kjøttproduksjon" ~ "Broiler",
       TRUE ~ NA_character_
     ),
-    production_type = factor(production_type, levels = c("Broiler", "Parent flock")),
+    production_type = factor(production_type, levels = c("Broiler", "Parent")),
     Year = as.integer(Year)
   ) %>%
     mutate(
@@ -312,6 +312,7 @@ total_distinct <- total_distinct_values(isolates, c("ST", "Serotype", "variant")
 total_distinct
 ```
 
+
 ### Grouped by variant
 
 > to see at which level we need to group for the figures 
@@ -367,18 +368,16 @@ because one ST can carry several different serotypes.
 
 ## Preparing for figures 
 
-### Fig 7 - Pie Matrix - top 10 variants choosen. 
+### 1. Scatter pie chart- top 10 variants choosen.
 
+Top 10 ST-Serotype variants by isolate count, "Other" grouping everything else.
 
 ```{r grouped columns top10}
 top10_variants_fig7_prep <-
   isolates %>%
-  mutate(
-    variant_top10 = top_n_other(variant, 10, other_label = "Other")
-  ) 
+  mutate(variant_top10 = top_n_other(variant, 10, other_label = "Other"))
 ```
 
-Now preparing data for visualisation
 ```{r getting contingency table for top10 variants fig 7}
 top10_variants_fig7 <-
   top10_variants_fig7_prep %>%
@@ -390,89 +389,44 @@ top10_variants_fig7
 write_tsv(top10_variants_fig7, file.path(here::here(params$output_dir), "data_pie_fig_top10_variant_year_production_tally.tsv"))
 ```
 
-This is the data we use to produce the figure
-
 ```{r figure7 top10 pie data}
-# x order: top 10 by total isolate count (desc), "Other" always last
+# x order: top 10 by isolate count (desc), "Other" always last
 variant_top10_totals <-
   top10_variants_fig7 %>%
   group_by(variant_top10) %>%
   summarise(total = sum(n), .groups = "drop") %>%
   arrange(desc(total))
 
-variant_top10_totals
-
-# reorganizing the levels so "Other" appears last
 variant_top10_levels <- c(setdiff(variant_top10_totals$variant_top10, "Other"), "Other")
-variant_top10_levels
-
-# spacinf the variant columns y7(> 1)
-x_spacing <- 1.7  
-# plot; coord_equal() keeps pies round regardless (spacing
-# is between x positions, not a change to their unit scale)
+x_spacing <- 1.7  # widens the plot; coord_equal() keeps pies round regardless
 
 fig7_top10_pie_data <-
   top10_variants_fig7 %>%
-  # long format
-  pivot_wider(names_from = production_type, values_from = n, values_fill = 0) %>%  
-  # We need to compute the x position of each variant function level to allow for the added x spacing
+  pivot_wider(names_from = production_type, values_from = n, values_fill = 0) %>%
   mutate(
     variant_top10 = factor(variant_top10, levels = variant_top10_levels),
-    x = as.numeric(variant_top10) * x_spacing,
+    x = as.numeric(variant_top10) * x_spacing,  # column position, spaced out
     y = Year,
-    total = Broiler + `Parent flock`
+    total = Broiler + `Parent`
   )
 
 fig7_top10_pie_data
 ```
 
-We use area-proportional radius (not radius-proportional) - formula explained below.
-
+Pie size uses 4 fixed categories (1-10, 10-50, 50-100, 100-200 isolates)
+instead of a continuous scale, so sizes are easy to compare at a glance.
+Each category gets one area-corrected radius (sqrt, not linear - a linear
+radius would make circle area, which is what a reader actually perceives,
+grow with the square of the count and exaggerate differences).
 
 ```{r figure7 top10 pie data radius}
 max_total_top10 <- max(fig7_top10_pie_data$total)
-fig7_top10_pie_data <-
-  fig7_top10_pie_data %>%
-  mutate(r = 0.42 * sqrt(total / max_total_top10))
-
-fig7_top10_pie_data
-```
-
-r = 0.42 * sqrt(total / max_total)
-Computes each pie's radius. This is built to make circle area — not radius — proportional to isolate count - as humans perceive circle size best by area.
-
-
-
-<!-- Explanations:
-total / max_total → normalizes every count to a 0–1 scale, where 1 = the biggest cell in the whole dataset (whatever that happens to be, since max_total is derived from fig7_top10_pie_data itself).
-sqrt(x) pulls smaller values up relative to a straight ratio - e.g. a cell with 1/4 of max_total's count does not get 1/4 the radius, it gets 1/2 (sqrt(0.25) = 0.5) - which is exactly what's needed to compensate for area growing quadratically with radius.
-0.42 * sqrt(...) - the 0.42 is just a scale factor - "the biggest pie gets a radius of 0.42 data-units" - chosen by eye so the largest circle fits within one x/y grid cell (columns and years are 1 unit apart, so a radius approaching 0.5 would make adjacent pies touch).
--->
-
-Pie size uses discrete categories (1-10, 10-50, 50-100, 100-200 isolates)
-rather than a continuous scale - every pie in a category renders at the same
-radius, which makes sizes easier to compare at a glance, at the cost of
-precision within a category. Each category's radius still uses the sqrt
-area-correction above (applied once per category, via its upper edge,
-instead of per exact count): naive radius-proportional-to-count sizing would
-make circle *area* - the ink a reader actually perceives - grow with the
-square of the count, exaggerating differences (a count 2x bigger would look
-4x bigger); sqrt correction keeps area honestly proportional instead.
-Category radii are normalized against 200 (the top of the highest category)
-rather than this dataset's own max, so the 4 legend sizes stay fixed and
-don't need recalibrating if the data changes.
-
-```{r figure7 top10 pie}
-# save dimensions - fixed here (not just passed to save_apec_plot below)
-# because the legend calibration two steps down needs to know the exact
-# physical size the panel will render at.
-fig7_top10_width_cm <- 55
-fig7_top10_height_cm <- 18
 
 bin_breaks <- c(1, 10, 50, 100, 200)
 bin_labels <- c("1-10", "10-50", "50-100", "100-200")
 stopifnot("some isolate counts exceed the largest defined bin (200) - extend bin_breaks" = max_total_top10 <= 200)
 
+# radius per category, from its upper edge, normalized against 200 (category max)
 bin_upper <- c(10, 50, 100, 200)
 bin_radius <- 0.42 * sqrt(bin_upper / max(bin_upper))
 names(bin_radius) <- bin_labels
@@ -481,35 +435,50 @@ fig7_top10_pie_data <-
   fig7_top10_pie_data %>%
   mutate(
     total_bin = cut(total, breaks = bin_breaks, labels = bin_labels, include.lowest = TRUE, right = FALSE),
-    r_binned = bin_radius[as.character(total_bin)]
+    r = bin_radius[as.character(total_bin)]
   )
+
+fig7_top10_pie_data
+write_tsv(
+  fig7_top10_pie_data %>% select(Year, variant_top10, Broiler, Parent, total, total_bin),
+  file.path(here::here(params$output_dir), "fig7_top10_pie_data_binned.tsv")
+)
+```
+
+r = 0.42 * sqrt(bin_upper / 200) - sqrt keeps circle *area* (not radius)
+proportional to isolate count; 0.42 is chosen so the biggest category's
+circle fits one grid cell without touching its neighbours.
+
+```{r figure7 top10 pie}
+fig7_top10_width_cm <- 55
+fig7_top10_height_cm <- 18
 
 base_plot_top10 <-
   ggplot() +
   geom_scatterpie(
     data = fig7_top10_pie_data,
-    aes(x = x, y = y, r = r_binned),
-    cols = c("Broiler", "Parent flock"),
+    aes(x = x, y = y, r = r),
+    cols = c("Broiler", "Parent"),
     color = "grey30", linewidth = 0.3
   ) +
   coord_equal() +
   scale_x_continuous(breaks = seq_along(variant_top10_levels) * x_spacing, labels = variant_top10_levels, expand = expansion(add = 0.7)) +
   scale_y_continuous(breaks = sort(unique(fig7_top10_pie_data$Year)), expand = expansion(add = 0.6)) +
   scale_fill_manual(values = palette_qual[1:2], name = "Production type") +
-  labs(
-    title = "Top 10 variants (ST-Serotype), by year",
-    x = "Variant", y = "Year"
-  ) +
+  labs(x = "Variant", y = "Year") +
   theme_apec_piematrix()
 
-mm_per_unit_top10 <- panel_mm_per_data_unit(base_plot_top10, fig7_top10_width_cm, fig7_top10_height_cm)
-bin_radius_mm <- 2 * bin_radius * mm_per_unit_top10  # diameter in mm, matching the "size" aesthetic convention
-names(bin_radius_mm) <- bin_labels
+# Legend-size calibration (makes legend same size as plot pies - because legend is added manually)
+mm_per_unit_top10 <- panel_mm_per_data_unit(base_plot_top10, fig7_top10_width_cm, fig7_top10_height_cm)  # how many mm is 1 data-unit, once actually rendered at this width/height
+
+bin_radius_mm <- 2 * bin_radius * mm_per_unit_top10  # radius (data-units) -> diameter (mm): x2 for diameter, x mm_per_unit_top10 to convert units
+
+names(bin_radius_mm) <- bin_labels  # re-attach the "1-10"/"10-50"/... names (arithmetic above can drop them) - scale_size_manual() below matches legend entries to sizes BY these names
 
 fig7_top10 <- base_plot_top10 +
   geom_point(data = fig7_top10_pie_data, aes(x = x, y = y, size = total_bin), alpha = 0) +
   scale_size_manual(
-    name = "Isolate number", values = bin_radius_mm, drop = FALSE,
+    name = "Number of isolates", values = bin_radius_mm, drop = FALSE,
     guide = guide_legend(override.aes = list(alpha = 1, shape = 21, color = "grey40", fill = "grey80"))
   )
 
@@ -517,120 +486,11 @@ fig7_top10
 save_apec_plot(fig7_top10, "fig7_top10_variant_piematrix_by_year.png", dir = params$figures_dir, width = fig7_top10_width_cm, height = fig7_top10_height_cm)
 ```
 
-**Pie = production type share; size = isolate count, binned into 4
-area-corrected categories (see chunk comments above); counts in the
-supplementary table above.**
 
 
-### Fig 8 - Sankey/Alluvial
-> based on previous script visuals
+### Sampling distribution: isolates per year by production type
 
-#### Top 5 ST example 1 
-Carefull data logic for filtering is not the same as fig 7 ! 
-
-- data using top 5 serotypes - and the rest serotype marked as other
-- we do also top 5 ST and other ST - so some other serotype might have ST in top 5
-
-- the draw the sankey with panels : year, ST and serotype - color ribon is Production type
-
-```{r grouped columns fig8 ex1}
-# Serotype_top5 and ST_top5 are each thresholded independently against the
-# full data - unlike Fig 7, where Serotype/ST labels were forced to "Other"
-# whenever variant was "Other" (a chained/dependent grouping). Here an
-# isolate can be Serotype "Other" while its ST is still one of the top 5 STs,
-# or vice versa.
-top5_ex1_fig8_prep <-
-  isolates %>%
-  mutate(
-    Serotype_top5 = top_n_other(Serotype, 5, other_label = "Other"),
-    ST_top5 = top_n_other(ST, 5, other_label = "Other")
-  )
-```
-
-Now preparing data for visualisation
-```{r getting contingency table for fig8 ex1}
-top5_ex1_fig8 <-
-  top5_ex1_fig8_prep %>%
-  select(Year, ST_top5, Serotype_top5, production_type) %>%
-  group_by(Year, ST_top5, Serotype_top5, production_type) %>%
-  tally()
-
-top5_ex1_fig8
-write_tsv(top5_ex1_fig8, file.path(here::here(params$output_dir), "fig8_ex1_top5ST_serotype_year_tally.tsv"))
-```
-
-This is the data we use to produce the figure
-
-Creating the sankey plot:
-
-```{r figure8 ex1 sankey}
-fig8_ex1_width_cm <- 26
-fig8_ex1_height_cm <- 14
-fig8_ex1_box_width <- 1/4  # wider stratum boxes - 1/8 was too narrow for the longer Serotype labels
-
-# ST_top5/Serotype_top5 are thresholded independently (see prep chunk above),
-# so "Other" can legitimately occur on both axes for the same isolate. Giving
-# each axis its own "Other ST"/"Other Serotype" label avoids ggalluvial
-# treating them as the same stratum (its "some strata appear at multiple
-# axes" warning) without resorting to discern = TRUE's auto-suffixed labels
-# ("Other.1"/"Other.2").
-#
-# Levels are set kept-categories-first, "Other ST"/"Other Serotype" last, so
-# that bucket (secondary information) stacks at the bottom of its axis block
-# rather than being interleaved with the named categories.
-ST_top5_levels_ex1 <-
-  top5_ex1_fig8 %>%
-  mutate(ST_top5 = if_else(ST_top5 == "Other", "Other ST", ST_top5)) %>%
-  group_by(ST_top5) %>%
-  summarise(total = sum(n), .groups = "drop") %>%
-  arrange(desc(total)) %>%
-  pull(ST_top5)
-ST_top5_levels_ex1 <- c(setdiff(ST_top5_levels_ex1, "Other ST"), "Other ST")
-
-Serotype_top5_levels_ex1 <-
-  top5_ex1_fig8 %>%
-  mutate(Serotype_top5 = if_else(Serotype_top5 == "Other", "Other Serotype", Serotype_top5)) %>%
-  group_by(Serotype_top5) %>%
-  summarise(total = sum(n), .groups = "drop") %>%
-  arrange(desc(total)) %>%
-  pull(Serotype_top5)
-Serotype_top5_levels_ex1 <- c(setdiff(Serotype_top5_levels_ex1, "Other Serotype"), "Other Serotype")
-
-fig8_ex1_plot_data <-
-  top5_ex1_fig8 %>%
-  mutate(
-    ST_top5 = if_else(ST_top5 == "Other", "Other ST", ST_top5),
-    Serotype_top5 = if_else(Serotype_top5 == "Other", "Other Serotype", Serotype_top5),
-    ST_top5 = factor(ST_top5, levels = ST_top5_levels_ex1),
-    Serotype_top5 = factor(Serotype_top5, levels = Serotype_top5_levels_ex1)
-  )
-
-fig8_ex1 <-
-  ggplot(
-    fig8_ex1_plot_data,
-    aes(axis1 = factor(Year), axis2 = ST_top5, axis3 = Serotype_top5, y = n)
-  ) +
-  geom_alluvium(aes(fill = production_type), width = fig8_ex1_box_width, alpha = 0.8) +
-  geom_stratum(width = fig8_ex1_box_width, fill = "grey90", color = "grey40") +
-  geom_text(stat = "stratum", aes(label = after_stat(stratum)), size = 3) +
-  scale_x_discrete(limits = c("Year", "ST", "Serotype"), expand = c(0.05, 0.05)) +
-  scale_fill_manual(values = palette_qual[1:2], name = "Production type") +
-  labs(
-    title = "Top 5 ST example 1: isolate flow by Year, ST, Serotype",
-    x = NULL, y = "Number of isolates"
-  ) +
-  theme_apec() +
-  theme(
-    axis.text.y = element_blank(),
-    axis.ticks.y = element_blank(),
-    panel.grid = element_blank()
-  )
-
-fig8_ex1
-save_apec_plot(fig8_ex1, "fig8_ex1_top5ST_sankey.png", dir = params$figures_dir, width = fig8_ex1_width_cm, height = fig8_ex1_height_cm)
-```
-
-### Fig 9 - Sampling design: isolates per year by production type
+Sampling overview: total isolates collected per year, split by production type.
 
 ```{r getting data for fig9 sampling design}
 fig9_sampling_design_data <-
@@ -645,12 +505,9 @@ write_tsv(fig9_sampling_design_data, file.path(here::here(params$output_dir), "f
 ```{r figure9 sampling design bar}
 fig9_sampling_design <-
   ggplot(fig9_sampling_design_data, aes(x = factor(Year), y = n, fill = production_type)) +
-  geom_col(width = 0.7) +
+  geom_col(width = 0.7) +  # stacked by default (one fill per Year bar)
   scale_fill_manual(values = palette_qual[1:2], name = "Production type") +
-  labs(
-    title = "Number of isolates per year, by production type",
-    x = "Year", y = "Number of isolates"
-  ) +
+  labs(x = "Year", y = "Number of isolates") +
   theme_apec()
 
 fig9_sampling_design

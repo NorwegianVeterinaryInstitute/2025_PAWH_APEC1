@@ -3,7 +3,7 @@ title: "2. Visualisation"
 author: "Eve Zeyl Fiskebeck"
 date: "`r format(Sys.time(), '%d %B, %Y')`"
 params:
-    results_xlsx: "results/Results_130226_SSM.xlsx"
+    results_xlsx: "data/Results_130226_SSM.xlsx"
     isolate_sheet: "APEC_driftsformsjekk_120226 (2)"
     source_code: 'code/R'
     source_viz: 'code/R/viz'
@@ -19,7 +19,7 @@ editor_options:
   chunk_output_type: console
 ---
 <!--
-Source of truth: results/Results_130226_SSM.xlsx, sheet "APEC_driftsformsjekk_120226 (2)".
+Source of truth: data/Results_130226_SSM.xlsx, sheet "APEC_driftsformsjekk_120226 (2)".
 This is the per-isolate table (1 row = 1 isolate) where driftsformnavn has already
 been backfilled from the external "driftsform_sjekket" lookup (see 1_data_wrangling.qmd) -
 the earlier "APEC_all_enterobase_cleaned_260" sheet still has driftsformnavn = NA for
