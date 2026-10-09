@@ -186,7 +186,7 @@ isolates_fixed <- isolates_raw %>%
 ```
 
 Manual verification
-```{r verifying spelling, eval=FALSE}
+```{r verifying spelling}
 my_summary_fun(isolates_fixed, Sample) %>%
   write_csv(file.path(here::here(params$output_dir), "manual_check.csv"))
 ```

@@ -3,9 +3,12 @@
 # affect what's tracked in git or what `git clone` checks out - only what
 # ends up in the downloadable archive for a tagged release.
 #
-# Kept: code/, LICENSE, README.md. Everything else below is excluded.
+# Kept: code/, LICENSE, README.md, plus the 3 files actually needed for
+# `renv::restore()` to reproduce the exact package versions on its own:
+# .Rprofile (triggers it), renv/activate.R (the bootstrap script it calls),
+# renv.lock (the package manifest). Everything else below is excluded,
+# including renv/settings.json and renv/.gitignore - small, but not needed.
 
-.Rprofile export-ignore
 .github export-ignore
 .gitattributes export-ignore
 .gitignore export-ignore
@@ -15,6 +18,6 @@
 *.docx export-ignore
 CLAUDE.md export-ignore
 notes/ export-ignore
-renv.lock export-ignore
-renv/ export-ignore
 tests/ export-ignore
+renv/* export-ignore
+renv/activate.R -export-ignore
