@@ -1,8 +1,9 @@
 #' Save a ggplot with consistent sizing
-#'
+#' @evfi verified 2026-10-09 ok
+#' 
 #' Writes to the fixed `results/figures/<stage>/` 
 #' script driven by its own `params$figures_dir`, like
-#' `20260929_TidyData_Visualisation.qmd`) when `dir` is supplied - `dir`
+#' `TidyData_Visualisation.qmd`) when `dir` is supplied - `dir`
 #' overrides `stage` when both are given.
 #'
 #' @param plot A ggplot object.

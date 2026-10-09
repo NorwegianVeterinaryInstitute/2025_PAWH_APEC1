@@ -25,28 +25,7 @@ editor_options:
 
 In this quarto document : 
 - Most of the code has been written by Antrhopic Claude Sonnet
-- and has been edited and verified by Eve Fiskebeck (@evfi - date).
-
-**Verification checklist:**   
-
-Verified Folder code/R/viz
-- [x] palette_qual.R
-- [ ] save_apec_plot.R
-- [ ] theme_apec.R
-- [ ] theme_apec_piematrix.R
-- [ ] panel_mm_per_data_unit.R
-
-Verified Folder code/R
-- [x] check_spelling_homogeneity.R [will have to do manual check also]
-- [x] top_n_other.R (rename from grouping_helpers.R)
-- [x] my_summary_fun.R (was my own function-reused)
-- [x] top_n_contingency.R
-- [ ] kept_vs_other.R
-- [ ] total_distinct_values.R
-- [ ] add_proportions.R
-
-- [ ] Verified this file
-
+- and has been edited and verified by Eve Fiskebeck.
 
 # Setup
 ```{r setup}
@@ -117,13 +96,6 @@ isolates_raw <- read_excel(
   ) %>%
   mutate(ST = as.character(ST), Year = as.integer(Year))
 ```
-
-<!-- types verification
-ok 
-```{r initial glimpse}
-glimpse(isolates_raw)
-```
---> 
 
 ## 1.2 Data verification
 

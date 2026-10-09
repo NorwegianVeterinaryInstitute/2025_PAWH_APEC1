@@ -1,5 +1,5 @@
 #' Shared ggplot2 theme for APEC1 visualisations
-#'
+#' @evfi verified 2026-10-09 ok
 #' Design goals: colorblind-safe, print-friendly, minimal chartjunk,
 #' consistent typography/legend placement across all figures in this project.
 #'

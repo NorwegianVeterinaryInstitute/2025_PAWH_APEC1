@@ -1,5 +1,7 @@
 #' Attach isolate-count and distinct-value-count percentages to a kept/other summary
-#'
+#' @evfi verified 2026-10-09 - was only used for data exploration and choice how 
+#' to display - reverified
+#' 
 #' Counts alone don't say whether that's a lot or a little - this attaches
 #' the two proportions that actually matter for picking a top-N threshold:
 #' `pct_isolates` (share of all isolates in this bucket) and
@@ -7,9 +9,8 @@
 #' bucket represents). A bucket can hold most of the isolates while
 #' representing almost none of the underlying diversity, or vice versa.
 #'
-#' @param threshold_summary A `summarise_contingency()`-shaped tibble with
-#'   `top_n`, `other_col`, `group_value`, `n_isolates`, `n_distinct_values`
-#'   (e.g. the output of `kept_vs_other()`).
+#' @param threshold_summary A tibble with `top_n`, `other_col`, `group_value`,
+#'   `n_isolates`, `n_distinct_values` - the output of `kept_vs_other()`.
 #' @param total_distinct Output of `total_distinct_values()`: `other_col`,
 #'   `n_total_distinct` - total distinct values per `other_col` across the
 #'   full dataset.

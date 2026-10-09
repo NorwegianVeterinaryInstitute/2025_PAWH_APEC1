@@ -1,5 +1,6 @@
 #' Collapse a vector to its n most frequent values, folding the rest into "Other"
 #' @evfi 20261005 ok
+#' 
 #' @param x A character/factor vector.
 #' @param n Number of top levels to keep individually.
 #' @param other_label Label used for every non-missing value outside the top n.

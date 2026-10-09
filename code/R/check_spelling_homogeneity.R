@@ -1,5 +1,7 @@
 #' Flag likely spelling/typo inconsistencies within a categorical column
 #'
+#' @evfi ok - we in addition verify manually
+#' 
 #' Compares every pair of distinct values (case-insensitive, whitespace-trimmed):
 #' pairs identical after trimming/casefolding are flagged "case_or_whitespace"
 #' (safe to auto-fix), pairs within `max_dist` edit distance are flagged

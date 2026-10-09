@@ -1,5 +1,6 @@
 #' theme_apec() variant for the Figure 7 pie-matrix charts
-#'
+#' @evfi verified 2026-10-09 ok
+#' 
 #' Adds the styling shared by the top-5 and top-10 pie-matrix figures on top
 #' of theme_apec(): grey, slightly smaller axis text, no gridlines (a grid
 #' under overlapping pie circles reads as clutter), legend at the bottom
