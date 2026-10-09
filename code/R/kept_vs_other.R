@@ -1,5 +1,7 @@
 #' Collapse a top_n_contingency() table to a "kept" vs. "other" comparison
 #'
+#' @evfi reverified 2026-10-09
+#' 
 #' Recodes `group_value` down to exactly 2 buckets - `"kept"` (all top-n
 #' values of the grouping column together) and `"other"` (everything else
 #' together) - then runs `summarise_contingency()` on that collapsed table.
