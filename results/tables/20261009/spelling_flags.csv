@@ -1,0 +1,3 @@
+column,value_a,value_b,distance,flag
+Production,"Foreldredyr, kjøttproduksjon","Foreldredyr, kj�ttproduksjon",1,possible_typo
+Species,Rowan ranger,Rowan Ranger,0,case_or_whitespace

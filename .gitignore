@@ -1,9 +1,10 @@
-data/
-results/
 2025_PAWH_APEC1.Rproj
 renv 
 *.xlsx
 !renv/settings.json 
+# all columns incl producent info - cannot add as is
+data/Original_Results_130226_SSM.xlsx 
+!data/Results_130226_SSM.xlsx
 
 # 2025_PAWH_APEC1.code-workspace # this is the workspace of Solveig now - fixed for both
 # 2025_PAWH_APEC1_EveFix.code-workspace # this is the fix nvi workspace -> archive to settings now
@@ -59,7 +60,6 @@ docs/
 *_files/
 /.quarto/
 code/*_cache/
-# (results/ incl. results/figures/ already ignored above)
 
 # translation temp files
 po/*~

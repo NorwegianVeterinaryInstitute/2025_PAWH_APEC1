@@ -1,0 +1,9 @@
+top_n	other_col	group_value	n_isolates	pct_isolates	n_distinct_values	pct_distinct_values
+5	Serotype	kept	505	57.1	18	15.7
+5	variant	kept	505	57.1	19	14.2
+5	Serotype	other	379	42.9	103	89.6
+5	variant	other	379	42.9	115	85.8
+10	Serotype	kept	645	73	23	20
+10	variant	kept	645	73	25	18.7
+10	Serotype	other	239	27	98	85.2
+10	variant	other	239	27	109	81.3

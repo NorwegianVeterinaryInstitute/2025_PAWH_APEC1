@@ -41,7 +41,6 @@ Verified Folder code/R
 - [x] top_n_other.R (rename from grouping_helpers.R)
 - [x] my_summary_fun.R (was my own function-reused)
 - [x] top_n_contingency.R
-- [ ] summarise_contingency.R
 - [ ] kept_vs_other.R
 - [ ] total_distinct_values.R
 - [ ] add_proportions.R
@@ -54,11 +53,7 @@ Verified Folder code/R
 library(here)
 library(tidyverse)
 library(readxl)
-library(writexl)
-library(scales)
-library(ggalluvial)
 library(scatterpie)
-library(patchwork)
 ```
 
 ```{r params for interactive sessions}
@@ -69,7 +64,7 @@ if (!exists("params")) {
     this_file <- rstudioapi::getSourceEditorContext()$path
   }
   if (is.null(this_file) || !nzchar(this_file)) {
-    this_file <- here::here("code", "20260929_TidyData_Visualisation.qmd")
+    this_file <- here::here("code", "TidyData_Visualisation.qmd")
   }
   params <- rmarkdown::yaml_front_matter(this_file)$params
 }
@@ -104,7 +99,7 @@ Process
     - `ST`/`Serotype` renamed and coerced to character here so nothing downstream touches the raw `mlst_scheme_list/sequence_type` / `SeroTypeFinder/SeroType` names.
     - `Production` type (driftsformnavn), `Species` host (artnavn), `Year` and `Case` (sak) to be able to know the number of cases registred. 
     - I only used the excel sheet `APEC_driftsformsjekk_120226 (2)` of the excel file: `Results_130226_SSM.xlsx`
-
+- I had to only keep those columns then for adding to zenodo (remove extra to avoid producent info.)
 
 ```{r load data}
 isolates_raw <- read_excel(
@@ -297,12 +292,9 @@ Same question, two groupings:
 - keep the top N *ST*s instead, how many
 distinct Serotype/variant. 
 
-Same `top_n_contingency()` +
-`summarise_contingency()` pattern for both, just a different `group_col` /
-`other_cols` 
-
-- shared helpers (`kept_vs_other()`, `total_distinct_values()`,
-`add_proportions()`, all in `code/R/`) 
+Same `top_n_contingency()` pattern for both, just a different `group_col` /
+`other_cols` - shared helpers (`kept_vs_other()`, `total_distinct_values()`,
+`add_proportions()`, all in `code/R/`)
 
 ```{r contingency helpers}
 # how many distinct values of ST/Serotype/variant exist overall, to turn
@@ -514,3 +506,14 @@ fig9_sampling_design
 save_apec_plot(fig9_sampling_design, "fig9_sampling_design_year_production_bar.png", dir = params$figures_dir, width = 18, height = 12)
 ```
 
+# Reproducibility
+
+R version and exact package versions used to produce this document - written to
+`code/sessionInfo.txt` as well as printed below, so it travels with the code
+itself (not just `renv.lock`, which lives outside `code/`).
+
+```{r session info}
+info <- sessionInfo()
+writeLines(capture.output(info), here::here("code", "sessionInfo.txt"))
+info
+```
